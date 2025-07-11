@@ -1,0 +1,29 @@
+{
+  "version": "2.0",
+  "source": "./index.html",
+  "type": "module",
+  "name": "cncbi-ui-test",
+  "description": "CNCBI UI test_v2.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "start": "concurrently \"npm run dev\" \"python pyscripts/backend_server.py\"",
+    "backend": "python pyscripts/backend_server.py",
+    "frontend": "npm run dev"
+  },
+  "dependencies": {
+    "axios": "^1.9.0",
+    "vue": "^3.4.15",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@vitejs/plugin-vue": "^5.0.3",
+    "@vue/tsconfig": "^0.5.1",
+    "concurrently": "^9.1.2",
+    "typescript": "5.6.2",
+    "vite": "^5.0.11",
+    "vue-tsc": "2.0.29"
+  }
+}
