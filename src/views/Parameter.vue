@@ -48,7 +48,7 @@
               class="version-control"
               style="width: 300px; min-width: 300px; height: 35px; padding: 0 15px; font-size: 15px;"
             >
-              <option value="" disabled>{{ currentTab === 'parameter' ? 'Select Parameter Category' : 'Select Adjustment Category' }}</option>
+              <option value="" disabled style="color: #888;">{{ currentTab === 'parameter' ? 'Select Parameter Category' : 'Select Adjustment Category' }}</option>
               <option v-for="category in currentTab === 'parameter' ? parameterCategories : adjustmentCategories" 
                       :key="category" 
                       :value="category"
@@ -68,7 +68,7 @@
           <div class="instructions-box no-bg" style="margin-top: 0px;">
             <p class="instructions-title">Instructions:</p>
             <ul class="instructions-list">
-              <li>1. Select category from the dropdown list.</li>
+              <li>1. Select category from the dropdown list (optional).</li>
               <li>2. Enter the version name (If not entered, will use timestamp as default).</li>
               <li>3. Select and upload your file.</li>
             </ul>
@@ -102,7 +102,7 @@
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.type }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.category || '-' }}</td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">upload: {{ item.type === 'Parameter' ? 'par' : 'adj' }}_{{ item.timestamp }}_{{ item.category }}_{{ item.suffix }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">upload: {{ item.type === 'Parameter' ? 'par' : 'adj' }}_{{ item.timestamp }}{{ item.category ? '_' + item.category : '' }}{{ item.suffix ? '_' + item.suffix : '' }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;"><button @click="downloadRow(index)" :style="{ color: item.downloaded ? '#4CAF50' : '#333', cursor: 'pointer', fontSize: '20px', background: 'none', border: 'none' }">⬇️</button></td>
@@ -246,10 +246,6 @@ const formatFileSize = (bytes: number): string => {
 
 const uploadFile = async () => {
   if (!selectedFile.value) return
-  if (!selectedCategory.value) {
-    message.value = '❌ Please select a category'
-    return
-  }
 
   const formData = new FormData()
   formData.append('file', selectedFile.value)
@@ -270,28 +266,36 @@ const uploadFile = async () => {
     const now = new Date()
     const pad = (n: number) => n.toString().padStart(2, '0')
     const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-    // Use version name or timestamp as default
-    const userInput = versionSuffix.value.trim()
-    const versionName = userInput ? `${currentTimestamp.value}_${userInput}` : currentTimestamp.value
+    
+    // Generate folder name based on available components
+    const prefix = currentTab.value === 'parameter' ? 'par' : 'adj'
+    let folderName = `${prefix}_${currentTimestamp.value}`
+    if (selectedCategory.value) {
+      folderName += `_${selectedCategory.value}`
+    }
+    if (versionSuffix.value.trim()) {
+      folderName += `_${versionSuffix.value.trim()}`
+    }
+
     const newRecord = {
       maker: 'RMGUser_1',
       time: timeStr,
       type: currentTab.value === 'parameter' ? 'Parameter' : 'Adjustment',
-      category: selectedCategory.value,
+      category: selectedCategory.value || '',
       timestamp: currentTimestamp.value,
       suffix: versionSuffix.value.trim(),
-      action: currentTab.value === 'parameter' ? `Upload Parameters: ${versionName}` : `Upload Adjustments: ${versionName}`,
+      action: `upload: ${folderName}`,
       status: 'In review',
       checker: 'Waiting',
       approved: false,
       downloaded: false,
       selected: false,
-      file: selectedFile.value // Store the file before clearing it
+      file: selectedFile.value
     }
 
     reviewList.value.unshift(newRecord)
-    selectedFile.value = null // Clear after storing in record
-    saveState() // Save to localStorage
+    selectedFile.value = null
+    saveState()
   } catch (error: any) {
     message.value = '❌ ' + (error.response?.data?.error || 'Upload failed.')
     uploadSuccess.value = false

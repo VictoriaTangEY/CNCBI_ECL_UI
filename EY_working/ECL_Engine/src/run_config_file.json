@@ -3,12 +3,13 @@
     "DATA_PATH": "C:\\Users\\SA814XM\\Engagement\\01_CNCBI\\CNCBI_ECL_Engine\\02_engine_server\\99_data\\01_merged_data_folder",
     "DATA_YYMM": 20241231,
 
-    "PARAM_PATH": "C:\\Users\\SA814XM\\Engagement\\01_CNCBI\\CNCBI_ECL_Engine\\02_engine_server\\99_data\\02_param_upload_folder",
+    "PARAM_PATH": "C:\\Users\\UV665AR\\OneDrive - EY\\Documents\\GitHub\\CNCBI_ECL_UI\\EY_working\\99_data\\02_param_upload_folder",
 
     "OUTPUT_PATH": "C:\\Users\\SA814XM\\Engagement\\01_CNCBI\\CNCBI_ECL_Engine\\02_engine_server\\99_data\\03_output_folder",
 
     "PREV_YYMM": 20231231,
     "RUN_MODE": 6,
+    "COUNTRY": "All",
     "TO_DB": "ON",
     "TEST_MODE": "ON",
     "TEST_DEAL_LIST": [],

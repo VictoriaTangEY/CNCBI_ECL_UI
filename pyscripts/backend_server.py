@@ -42,11 +42,11 @@ def upload_file():
         folder_prefix = 'par_' if file_type == 'parameter' else 'adj_'
         folder_name = f"{folder_prefix}{timestamp}"
         
-        # Add category
+        # Add category only if provided
         if category:
             folder_name = f"{folder_name}_{category}"
         
-        # Add suffix if provided
+        # Add suffix only if provided
         if suffix:
             folder_name = f"{folder_name}_{suffix}"
 
@@ -126,6 +126,14 @@ def get_uploaded_files():
 @app.route('/update_run_config', methods=['POST'])
 def update_run_config():
     try:
+        # Get data from request
+        data = request.get_json()
+        selected_parameters = data.get('selectedParameters', '')
+        selected_corrections = data.get('selectedCorrections', '')
+        reporting_date = data.get('reportingDate', '')
+        run_mode = data.get('runMode', '')
+        country = data.get('country', '')
+
         # Read the current config file
         with open(CONFIG_FILE_PATH, 'r') as f:
             config = json.load(f)
@@ -134,9 +142,52 @@ def update_run_config():
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         new_config_path = os.path.join(BASE_ECL_ENGINE, 'src', f'run_config_file_{timestamp}.json')
         
-        # Clear the specified fields
-        config['RUN_SETTING']['DATA_YYMM'] = ""
-        config['RUN_SETTING']['RUN_MODE'] = ""
+        # Get the target PARAM_PATH from config
+        param_path = config['RUN_SETTING']['PARAM_PATH']
+        
+        # Copy all Excel files from selected folders to PARAM_PATH
+        excel_extensions = ['.xlsx', '.xls', 'csv']
+        files_copied = []
+        
+        # Copy files from parameter folder if selected
+        if selected_parameters:
+            param_folder = os.path.join(BASE_UPLOAD_FOLDER, selected_parameters)
+            if os.path.exists(param_folder):
+                for root, _, files in os.walk(param_folder):
+                    for file in files:
+                        if any(file.lower().endswith(ext) for ext in excel_extensions):
+                            src_file = os.path.join(root, file)
+                            dst_file = os.path.join(param_path, file)
+                            shutil.copy2(src_file, dst_file)
+                            files_copied.append(file)
+        
+        # Copy files from corrections folder if selected
+        if selected_corrections:
+            correction_folder = os.path.join(BASE_UPLOAD_FOLDER, selected_corrections)
+            if os.path.exists(correction_folder):
+                for root, _, files in os.walk(correction_folder):
+                    for file in files:
+                        if any(file.lower().endswith(ext) for ext in excel_extensions):
+                            src_file = os.path.join(root, file)
+                            dst_file = os.path.join(param_path, file)
+                            shutil.copy2(src_file, dst_file)
+                            files_copied.append(file)
+        
+        # Update DATA_YYMM with reporting date
+        if reporting_date:
+            # Convert YYYY-MM-DD to YYYYMMDD format
+            date_obj = datetime.strptime(reporting_date, '%Y-%m-%d')
+            config['RUN_SETTING']['DATA_YYMM'] = int(date_obj.strftime('%Y%m%d'))
+        
+        # Update RUN_MODE - use direct value
+        if run_mode:
+            config['RUN_SETTING']['RUN_MODE'] = int(run_mode)
+        
+        # Update country-specific settings if needed
+        if country and country != 'All':
+            config['RUN_SETTING']['COUNTRY'] = country
+        else:
+            config['RUN_SETTING']['COUNTRY'] = 'ALL'
         
         # Save the new config file
         with open(new_config_path, 'w') as f:
@@ -144,7 +195,9 @@ def update_run_config():
             
         return jsonify({
             'message': 'Configuration file updated successfully',
-            'new_config_path': new_config_path
+            'new_config_path': new_config_path,
+            'files_copied': files_copied,
+            'target_folder': param_path
         }), 200
         
     except Exception as e:

@@ -176,7 +176,7 @@ interface ReviewItem {
 // Replace hardcoded options with dynamic lists
 const parametersOptions = ref<string[]>([])
 const correctionsOptions = ref<string[]>([])
-const runModes = ['Full Run', 'Partial Run', 'Test Run']
+const runModes = ['6', '9', '12']
 
 // Country selection
 const countryOptions = ['All', 'Hong Kong', 'Macau', 'Singapore', 'Others']
@@ -268,38 +268,40 @@ async function onSubmit() {
       country: selectedCountry.value
     }
     
-    await axios.post('http://127.0.0.1:5010/update_run_config', configData)
-  } catch (error) {
-    console.error('Error updating run config:', error)
-    return
-  }
+    const response = await axios.post('http://127.0.0.1:5010/update_run_config', configData)
+    console.log('Config update response:', response.data)
 
-  reviewList.value.unshift({
-    maker: 'RMGUser_1',
-    time: timeStr,
-    parameter: selectedParameters.value,
-    dataCorrection: selectedCorrections.value,
-    reportingDate: selectedReportingDate.value,
-    runMode: selectedRunMode.value,
-    country: selectedCountry.value,
-    action: actionComment.value,
-    status: 'In review',
-    checker: 'Waiting',
-    approved: false,
-    downloaded: false,
-  })
-  
-  // Reset form for next submission - allow user to select new parameters
-  step1Complete.value = false
-  step2Complete.value = false
-  selectedParameters.value = ''
-  selectedCorrections.value = ''
-  selectedReportingDate.value = ''
-  selectedRunMode.value = ''
-  selectedCountry.value = ''
-  actionComment.value = ''
-  
-  saveState() // Save to localStorage
+    // Only add to review list if config update was successful
+    reviewList.value.unshift({
+      maker: 'RMGUser_1',
+      time: timeStr,
+      parameter: selectedParameters.value,
+      dataCorrection: selectedCorrections.value,
+      reportingDate: selectedReportingDate.value,
+      runMode: selectedRunMode.value,
+      country: selectedCountry.value,
+      action: actionComment.value,
+      status: 'In review',
+      checker: 'Waiting',
+      approved: false,
+      downloaded: false,
+    })
+    
+    // Reset form for next submission - allow user to select new parameters
+    step1Complete.value = false
+    step2Complete.value = false
+    selectedParameters.value = ''
+    selectedCorrections.value = ''
+    selectedReportingDate.value = ''
+    selectedRunMode.value = ''
+    selectedCountry.value = ''
+    actionComment.value = ''
+    
+    saveState() // Save to localStorage
+  } catch (error: any) {
+    console.error('Error updating run config:', error)
+    alert('Failed to update run configuration: ' + (error.response?.data?.error || error.message))
+  }
 }
 
 const router = useRouter()
