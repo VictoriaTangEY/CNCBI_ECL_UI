@@ -5,14 +5,20 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 import zipfile
 import shutil
+import json
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Set-ups
 # Base parameter upload folder
-BASE_UPLOAD_FOLDER = r'C:/Users/UV665AR/OneDrive - EY/Documents/GitHub/CNCBI_ECL_UI/EY_working/99_data/02_param_upload_folder'
+BASE_UPLOAD_FOLDER = r'C:/Users/UV665AR/OneDrive - EY/Documents/GitHub/CNCBI_ECL_UI/EY_working/99_data/04_UI_param_interim'
 app.config['UPLOAD_FOLDER'] = BASE_UPLOAD_FOLDER
+
+# Base ECL Engine folder
+BASE_ECL_ENGINE = r'C:/Users/UV665AR/OneDrive - EY/Documents/GitHub/CNCBI_ECL_UI/EY_working/ECL_Engine'
+CONFIG_FILE_PATH = os.path.join(BASE_ECL_ENGINE, 'src', 'run_config_file.json')
+
 
 # Parameter: Upload File
 @app.route('/upload', methods=['POST'])
@@ -32,8 +38,8 @@ def upload_file():
         # Generate timestamp
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         
-        # Create folder name with proper format: param/dc_timestamp_category_suffix
-        folder_prefix = 'param_' if file_type == 'parameter' else 'adj_'
+        # Create folder name with proper format: par/adj_timestamp_category_suffix
+        folder_prefix = 'par_' if file_type == 'parameter' else 'adj_'
         folder_name = f"{folder_prefix}{timestamp}"
         
         # Add category
@@ -99,7 +105,7 @@ def get_uploaded_files():
         
         # Filter based on file type
         if file_type == 'parameter':
-            files = [d for d in all_dirs if d.startswith('param_')]
+            files = [d for d in all_dirs if d.startswith('par_')]
         elif file_type == 'dataCorrection':
             files = [d for d in all_dirs if d.startswith('adj_')]
         else:
@@ -115,6 +121,34 @@ def get_uploaded_files():
         
     except Exception as e:
         return jsonify({'error': f'Error getting file list: {str(e)}'}), 500
+
+# Run Management: Update Configuration File
+@app.route('/update_run_config', methods=['POST'])
+def update_run_config():
+    try:
+        # Read the current config file
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config = json.load(f)
+        
+        # Create a timestamp for the new config file
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        new_config_path = os.path.join(BASE_ECL_ENGINE, 'src', f'run_config_file_{timestamp}.json')
+        
+        # Clear the specified fields
+        config['RUN_SETTING']['DATA_YYMM'] = ""
+        config['RUN_SETTING']['RUN_MODE'] = ""
+        
+        # Save the new config file
+        with open(new_config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+            
+        return jsonify({
+            'message': 'Configuration file updated successfully',
+            'new_config_path': new_config_path
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # Test: show run time
 @app.route('/test', methods=['GET'])

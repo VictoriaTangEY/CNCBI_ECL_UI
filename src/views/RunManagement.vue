@@ -251,12 +251,28 @@ function onContinue() {
   }
 }
 
-function onSubmit() {
+async function onSubmit() {
   if (!canSubmit.value) return
 
   const now = new Date()
   const pad = (n: number) => n.toString().padStart(2, '0')
   const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+
+  // Call API to update run_config_file.json
+  try {
+    const configData = {
+      selectedParameters: selectedParameters.value,
+      selectedCorrections: selectedCorrections.value,
+      reportingDate: selectedReportingDate.value,
+      runMode: selectedRunMode.value,
+      country: selectedCountry.value
+    }
+    
+    await axios.post('http://127.0.0.1:5010/update_run_config', configData)
+  } catch (error) {
+    console.error('Error updating run config:', error)
+    return
+  }
 
   reviewList.value.unshift({
     maker: 'RMGUser_1',

@@ -102,7 +102,7 @@
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.type }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.category || '-' }}</td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">upload: {{ item.type === 'Parameter' ? 'param' : 'adj' }}_{{ item.timestamp }}_{{ item.category }}_{{ item.suffix }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">upload: {{ item.type === 'Parameter' ? 'par' : 'adj' }}_{{ item.timestamp }}_{{ item.category }}_{{ item.suffix }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;"><button @click="downloadRow(index)" :style="{ color: item.downloaded ? '#4CAF50' : '#333', cursor: 'pointer', fontSize: '20px', background: 'none', border: 'none' }">⬇️</button></td>
