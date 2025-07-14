@@ -46,7 +46,7 @@
                     <option v-for="param in parametersOptions" :key="param" :value="param">{{ param }}</option>
                   </select>
                   <select v-model="selectedCorrections" class="select-input">
-                    <option disabled value="">Select data corrections</option>
+                    <option disabled value="">Select adjustments</option>
                     <option v-for="correction in correctionsOptions" :key="correction" :value="correction">{{ correction }}</option>
                   </select>
                 </div>
@@ -94,7 +94,7 @@
           <div class="instructions-box">
             <p class="instructions-title">Instructions:</p>
             <ul class="instructions-list">
-              <li>1. Please choose parameters and data corrections. If no changes, please choose default and continue.</li>
+              <li>1. Please choose parameters and adjustments. If no changes, please choose default and continue.</li>
               <li>2. Please choose run mode and fill in action comment.</li>
               <li>3. Submit to generate the run record.</li>
             </ul>
@@ -105,42 +105,44 @@
       <!-- Review Box -->
       <div>
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Review</h2>
-        <table style="margin-top: 8px; width: 100%; border-collapse: collapse; background: white; border: 1px solid #e0e0e0;">
-          <thead style="background: #f7f7f7;">
-            <tr>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 60px;"></th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Maker</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 210px;">Time</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 260px;">Settings</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 150px;">Action</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 120px;">Status</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 120px;">Checker</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Download</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, index) in reviewList" :key="index" :style="{ backgroundColor: item.approved ? '#e8f5e9' : '#fff' }">
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                <input type="radio" name="review-select" :checked="selectedReviewIndex === index" @change="selectReview(index)" />
-              </td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
-              <td class="parameters-cell">
-                <div class="param-item"><span class="param-label">Parameter:</span> <span class="param-value">{{ item.parameter }}</span></div>
-                <div class="param-item"><span class="param-label">Data Correction:</span> <span class="param-value">{{ item.dataCorrection }}</span></div>
-                <div class="param-item"><span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.reportingDate }}</span></div>
-                <div class="param-item"><span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span></div>
-                <div class="param-item"><span class="param-label">Country:</span> <span class="param-value">{{ item.country }}</span></div>
-              </td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                <button @click="downloadRow(index)" :style="{ color: item.downloaded ? '#4CAF50' : '#333', cursor: 'pointer', fontSize: '20px', background: 'none', border: 'none' }">⬇️</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
+          <table style="width: 100%; border-collapse: collapse; background: white;">
+            <thead style="background: #f7f7f7; position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;"></th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Maker</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 160px;">Time</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 320px;">Settings</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Action</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Status</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Checker</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, index) in reviewList" :key="index" :style="{ backgroundColor: item.approved ? '#e8f5e9' : '#fff' }">
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
+                  <input type="radio" name="review-select" :checked="selectedReviewIndex === index" @change="selectReview(index)" />
+                </td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
+                <td style="text-align: left; padding: 16px 18px; border-bottom: 1px solid #e0e0e0; min-width: 260px; font-size: 15px; line-height: 1.7;">
+                  <div class="param-item"><span class="param-label">Parameter:</span> <span class="param-value">{{ item.parameter }}</span></div>
+                  <div class="param-item"><span class="param-label">Adjustment:</span> <span class="param-value">{{ item.dataCorrection }}</span></div>
+                  <div class="param-item"><span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.reportingDate }}</span></div>
+                  <div class="param-item"><span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span></div>
+                  <div class="param-item"><span class="param-label">Country:</span> <span class="param-value">{{ item.country }}</span></div>
+                </td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
+                  <button @click="downloadRow(index)" :style="{ color: item.downloaded ? '#4CAF50' : '#333', cursor: 'pointer', fontSize: '20px', background: 'none', border: 'none' }">⬇️</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <div style="margin-top: 15px; text-align: right;">
           <button class="upload-button" style="background: #FF612C;" @click="approveSelected">Confirm</button>
         </div>
@@ -202,7 +204,7 @@ const fetchUploadedFiles = async () => {
     const paramResponse = await axios.get('http://127.0.0.1:5010/get_uploaded_files?type=parameter')
     parametersOptions.value = paramResponse.data.files
     
-    // Fetch data corrections
+    // Fetch adjustments
     const corrResponse = await axios.get('http://127.0.0.1:5010/get_uploaded_files?type=dataCorrection')
     correctionsOptions.value = corrResponse.data.files
   } catch (error) {
@@ -474,12 +476,9 @@ function approveSelected() {
   text-align: left;
   padding: 16px 18px;
   border-bottom: 1px solid #e0e0e0;
-  background: #f8fafc;
-  border-radius: 8px;
   min-width: 260px;
   font-size: 15px;
   line-height: 1.7;
-  box-shadow: 0 1px 4px rgba(21,61,119,0.04);
 }
 .param-item {
   margin-bottom: 4px;

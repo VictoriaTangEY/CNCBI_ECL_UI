@@ -5,7 +5,7 @@
       <h3 style="font-weight: bold; font-size: 22px; margin-bottom: 24px;">Parameters</h3>
       <ul style="list-style: none; padding-left: 0;">
         <li @click="currentTab = 'parameter'" :style="{ cursor: 'pointer', color: currentTab === 'parameter' ? '#ff612c' : '#333', fontWeight: currentTab === 'parameter' ? '600' : 'normal', marginBottom: '10px', fontSize: '20px' }">▸ Parameter</li>
-        <li @click="currentTab = 'dataCorrection'" :style="{ cursor: 'pointer', color: currentTab === 'dataCorrection' ? '#ff612c' : '#333', fontWeight: currentTab === 'dataCorrection' ? '600' : 'normal', fontSize: '20px' }">▸ Data Correction</li>
+        <li @click="currentTab = 'adjustment'" :style="{ cursor: 'pointer', color: currentTab === 'adjustment' ? '#ff612c' : '#333', fontWeight: currentTab === 'adjustment' ? '600' : 'normal', fontSize: '20px' }">▸ Adjustment</li>
       </ul>
     </aside>
 
@@ -17,7 +17,7 @@
         <ol class="breadcrumb-list">
           <li><svg style="width:16px; height:16px; fill:#666; vertical-align:middle;" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg> Home</li>
           <li>Parameter</li>
-          <li>{{ currentTab === 'parameter' ? 'Parameter' : 'Data Correction' }}</li>
+          <li>{{ currentTab === 'parameter' ? 'Parameter' : 'Adjustment' }}</li>
         </ol>
       </nav>
 
@@ -27,7 +27,7 @@
           <div class="progress-bar-inner" :style="{ width: uploadTried ? '100%' : '0%' }"></div>
         </div>
         <div class="config-inner-box">
-          <h2 class="upload-title">{{ currentTab === 'parameter' ? 'Upload Parameter' : 'Upload Data Correction' }}</h2>
+          <h2 class="upload-title">{{ currentTab === 'parameter' ? 'Upload Parameter' : 'Upload Adjustment' }}</h2>
           <div style="display: flex; justify-content: center;">
             <div class="upload-box" :class="{ dragging: isDragging, 'has-file': selectedFile, success: uploadSuccess }" @dragover.prevent="onDragOver" @dragleave.prevent="onDragLeave" @drop.prevent="onDrop" @click="triggerFileInput">
               <input type="file" @change="handleFileChange" class="file-input" ref="fileInput" accept=".xlsx,.xls,.csv,.txt,.json,.docx,.pdf,.zip">
@@ -41,19 +41,36 @@
             </div>
           </div>
           <!-- 版本名输入框，放在upload box下方 -->
-          <div style="margin: 18px auto 0; max-width: 340px; display: flex; justify-content: center;">
+          <div style="margin: 18px auto 0; max-width: 600px; display: flex; gap: 10px; justify-content: center;">
+            <!-- Parameter/Data Correction Category Selection -->
+            <select
+              v-model="selectedCategory"
+              class="version-control"
+              style="width: 300px; min-width: 300px; height: 35px; padding: 0 15px; font-size: 15px;"
+            >
+              <option value="" disabled>{{ currentTab === 'parameter' ? 'Select Parameter Category' : 'Select Adjustment Category' }}</option>
+              <option v-for="category in currentTab === 'parameter' ? parameterCategories : adjustmentCategories" 
+                      :key="category" 
+                      :value="category"
+                      style="padding: 10px 0;"
+              >
+                {{ category }}
+              </option>
+            </select>
             <input
               v-model="versionSuffix"
-              :placeholder="currentTab === 'parameter' ? 'Enter parameter version name' : 'Enter data correction version name'"
+              :placeholder="currentTab === 'parameter' ? 'Enter parameter version name' : 'Enter adjustment version name'"
               class="version-control"
+              style="width: 300px; min-width: 300px; height: 35px; padding: 0 15px; font-size: 15px;"
             />
           </div>
-          <!-- Instructions 区块 -->
-          <div class="instructions-box no-bg" style="margin-top: 18px;">
+          <!-- Instructions box -->
+          <div class="instructions-box no-bg" style="margin-top: 0px;">
             <p class="instructions-title">Instructions:</p>
             <ul class="instructions-list">
-              <li>1. Enter the version name above (If not entered, will use timestamp as default).</li>
-              <li>2. Select and upload your file.</li>
+              <li>1. Select category from the dropdown list.</li>
+              <li>2. Enter the version name (If not entered, will use timestamp as default).</li>
+              <li>3. Select and upload your file.</li>
             </ul>
           </div>
         </div>
@@ -62,30 +79,37 @@
       <!-- Review Box -->
       <div style="margin-top: 50px;">
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 0;">Review</h2>
-        <table style="margin-top: 8px; width: 100%; border-collapse: collapse; background: white; border: 1px solid #e0e0e0;">
-          <thead style="background: #f7f7f7;">
-            <tr>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 60px;"><input type="checkbox" v-model="allSelected"></th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Maker</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 160px;">Time</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 200px;">Action</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 120px;">Status</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 120px;">Checker</th>
-              <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Download</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, index) in reviewList" :key="index" :style="{ backgroundColor: item.approved ? '#e8f5e9' : '#fff' }">
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;"><input type="checkbox" v-model="item.selected"></td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
-              <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;"><button @click="downloadRow(index)" :style="{ color: item.downloaded ? '#4CAF50' : '#333', cursor: 'pointer', fontSize: '20px', background: 'none', border: 'none' }">⬇️</button></td>
-            </tr>
-          </tbody>
-        </table>
+        <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
+
+          <table style="width: 100%; border-collapse: collapse; background: white;">
+            <thead style="background: #f7f7f7; position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;"><input type="checkbox" v-model="allSelected"></th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 80px;">Maker</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 160px;">Time</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 80px;">Type</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 80px;">Category</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 80px;">Action</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Status</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Checker</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, index) in reviewList" :key="index" :style="{ backgroundColor: item.approved ? '#e8f5e9' : '#fff' }">
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;"><input type="checkbox" v-model="item.selected"></td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.type }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.category || '-' }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">upload: {{ item.type === 'Parameter' ? 'param' : 'adj' }}_{{ item.timestamp }}_{{ item.category }}_{{ item.suffix }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;"><button @click="downloadRow(index)" :style="{ color: item.downloaded ? '#4CAF50' : '#333', cursor: 'pointer', fontSize: '20px', background: 'none', border: 'none' }">⬇️</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <div style="margin-top: 3px; text-align: right;">
           <button class="upload-button" style="background: #FF612C;" @click="approveSelected">Approve</button>
         </div>
@@ -98,7 +122,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import axios from 'axios'
 
-const currentTab = ref<'parameter' | 'dataCorrection'>('dataCorrection')
+const currentTab = ref<'parameter' | 'adjustment'>('parameter')
 const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const message = ref('')
@@ -106,9 +130,9 @@ const isDragging = ref(false)
 const uploadSuccess = ref(false)
 const uploadTried = ref(false)
 
-// 版本后缀（统一用于parameter和data correction）
+// Suffix
 const versionSuffix = ref('')
-// 当前时间戳
+// Current timestamp
 const currentTimestamp = ref('')
 
 // Unified review list with localStorage persistence
@@ -123,7 +147,11 @@ const allSelected = computed({
   }
 })
 
-// 生成时间戳函数
+const selectedCategory = ref('')
+const parameterCategories = ['CCF', 'haircut', 'model segment']
+const adjustmentCategories = ['CCF', 'haircut', 'model segment']
+
+// Generate current timestamp
 const generateTimestamp = () => {
   const now = new Date()
   const pad = (n: number) => n.toString().padStart(2, '0')
@@ -137,8 +165,9 @@ watch(currentTab, () => {
   uploadSuccess.value = false
   uploadTried.value = false
   if (fileInput.value) fileInput.value.value = ''
-  // 切换tab时清空versionSuffix
+  // 切换tab时清空versionSuffix和selectedCategory
   versionSuffix.value = ''
+  selectedCategory.value = ''
   // 更新时间戳
   currentTimestamp.value = generateTimestamp()
 })
@@ -217,11 +246,16 @@ const formatFileSize = (bytes: number): string => {
 
 const uploadFile = async () => {
   if (!selectedFile.value) return
+  if (!selectedCategory.value) {
+    message.value = '❌ Please select a category'
+    return
+  }
 
   const formData = new FormData()
   formData.append('file', selectedFile.value)
-  formData.append('fileType', currentTab.value) // Send file type (parameter or dataCorrection)
-  formData.append('suffix', versionSuffix.value.trim()) // Send user input suffix
+  formData.append('fileType', currentTab.value)
+  formData.append('suffix', versionSuffix.value.trim())
+  formData.append('category', selectedCategory.value)
 
   try {
     message.value = '⏳ Uploading...'
@@ -242,7 +276,11 @@ const uploadFile = async () => {
     const newRecord = {
       maker: 'RMGUser_1',
       time: timeStr,
-      action: currentTab.value === 'parameter' ? `Upload Parameters: ${versionName}` : `Upload Data corrections: ${versionName}`,
+      type: currentTab.value === 'parameter' ? 'Parameter' : 'Adjustment',
+      category: selectedCategory.value,
+      timestamp: currentTimestamp.value,
+      suffix: versionSuffix.value.trim(),
+      action: currentTab.value === 'parameter' ? `Upload Parameters: ${versionName}` : `Upload Adjustments: ${versionName}`,
       status: 'In review',
       checker: 'Waiting',
       approved: false,
@@ -448,34 +486,26 @@ const approveSelected = () => {
   font-weight: 400;
   letter-spacing: 0.5px;
 }
-.instructions-box.no-bg {
-  background: none;
-  box-shadow: none;
-  border-radius: 0;
-  padding-left: 0;
-  padding-right: 0;
-}
 .instructions-box {
-  background: #f7f7f7;
-  border-radius: 8px;
-  padding: 18px 24px;
-  margin-top: 16px;
-  box-shadow: 0 2px 8px rgba(21,61,119,0.04);
+  margin-top: 30px;
+  background: none;
+  padding: 0 10px 0 0;
 }
 .instructions-title {
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
   color: #153D77;
-  margin-bottom: 10px;
 }
 .instructions-list {
   font-size: 16px;
   color: #666;
+  line-height: 1.3;
   margin: 0;
   padding-left: 18px;
 }
 .instructions-list li {
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 

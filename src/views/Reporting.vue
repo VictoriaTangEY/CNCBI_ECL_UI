@@ -20,22 +20,16 @@
         <div class="config-inner-box">
           <h2 class="upload-title">Reporting</h2>
           <p style="color: #888; margin-bottom: 24px;">
-            Download all reporting documents in one package.
+            Download ECL reporting documents.
           </p>
 
-          <!-- 单一下载卡片区域 -->
-          <div style="border: 1px solid #e0e0e0; padding: 24px; border-radius: 10px; background: #fff; box-shadow: 0 2px 8px rgba(21,61,119,0.04); max-width: 600px; margin: 0 auto;">
-            <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">Download All Reports</h3>
-            <p style="font-size: 15px; color: #888; margin-bottom: 16px;">The download folder will contain the following six reports:</p>
-            <ul style="font-size: 15px; color: #333; margin-bottom: 18px; padding-left: 20px;">
-              <li>ECL monthly report</li>
-              <li>ECL summary by stage, BU and products</li>
-              <li>ECL monthly excel report by BUs</li>
-              <li>HKMA, Annual/ Interim / Quarter Return, Disclosure reports</li>
-              <li>Audit trail report</li>
-              <li>GL posting</li>
-            </ul>
-            <button class="step-btn" style="background: #2563eb; color: #fff; font-size: 15px;" @click="downloadDummyZip">Download All Reports</button>
+          <!-- 下载卡片区域 -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+            <div v-for="(report, idx) in reports" :key="idx" style="border: 1px solid #e0e0e0; padding: 24px; border-radius: 10px; background: #fff; box-shadow: 0 2px 8px rgba(21,61,119,0.04);">
+              <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">{{ report.title }}</h3>
+              <p style="font-size: 15px; color: #888; margin-bottom: 16px;">{{ report.description }}</p>
+              <button class="step-btn" style="background: #2563eb; color: #fff; font-size: 15px;" @click="downloadReport(report.title)">Download</button>
+            </div>
           </div>
         </div>
       </div>
@@ -46,13 +40,46 @@
 <script setup>
 import { ref } from 'vue'
 
-function downloadDummyZip() {
-  // Create a dummy zip file for illustration
-  const blob = new Blob(["This is a dummy report zip file for illustration purposes."], { type: 'application/zip' })
+const reports = [
+  {
+    title: 'ECL Monthly Report',
+    description: 'Comprehensive monthly ECL calculations and analysis',
+    format: 'XLSX'
+  },
+  {
+    title: 'ECL Summary Report',
+    description: 'Summary by stage, business unit and products',
+    format: 'XLSX'
+  },
+  {
+    title: 'BU Excel Report',
+    description: 'Detailed monthly report by business units',
+    format: 'XLSX'
+  },
+  {
+    title: 'HKMA Reports',
+    description: 'Annual, Interim, Quarter Return and Disclosure reports',
+    format: 'XLSX'
+  },
+  {
+    title: 'Audit Trail Report',
+    description: 'Complete audit trail of ECL calculations',
+    format: 'XLSX'
+  },
+  {
+    title: 'GL Posting Report',
+    description: 'General Ledger posting details',
+    format: 'XLSX'
+  }
+]
+
+function downloadReport(reportTitle) {
+  // Create a dummy file for illustration
+  const blob = new Blob(["This is a dummy report file for illustration purposes."], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'dummy_report.zip'
+  a.download = `${reportTitle.toLowerCase().replace(/\s+/g, '_')}.xlsx`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
@@ -119,10 +146,5 @@ function downloadDummyZip() {
 }
 .step-btn:hover {
   background: #e0e0e0;
-}
-.step-btn:disabled {
-  background: #eee;
-  color: #bbb;
-  cursor: not-allowed;
 }
 </style> 
