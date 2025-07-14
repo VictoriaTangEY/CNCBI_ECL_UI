@@ -153,6 +153,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 
 // Define the type for review list items
 interface ReviewItem {
@@ -170,8 +171,9 @@ interface ReviewItem {
   downloaded: boolean
 }
 
-const parametersOptions = ['Default Parameters', 'Parameter Set 1', 'Parameter Set 2']
-const correctionsOptions = ['No Correction', 'Correction A', 'Correction B']
+// Replace hardcoded options with dynamic lists
+const parametersOptions = ref<string[]>([])
+const correctionsOptions = ref<string[]>([])
 const runModes = ['Full Run', 'Partial Run', 'Test Run']
 
 // Country selection
@@ -192,6 +194,21 @@ const step2Complete = ref(false)
 
 // Review list with localStorage persistence
 const reviewList = ref<ReviewItem[]>([])
+
+// Function to fetch uploaded files from backend
+const fetchUploadedFiles = async () => {
+  try {
+    // Fetch parameters
+    const paramResponse = await axios.get('http://127.0.0.1:5010/get_uploaded_files?type=parameter')
+    parametersOptions.value = paramResponse.data.files
+    
+    // Fetch data corrections
+    const corrResponse = await axios.get('http://127.0.0.1:5010/get_uploaded_files?type=dataCorrection')
+    correctionsOptions.value = corrResponse.data.files
+  } catch (error) {
+    console.error('Error fetching uploaded files:', error)
+  }
+}
 
 const canContinue = computed(() => selectedParameters.value !== '' && selectedCorrections.value !== '' && selectedReportingDate.value !== '')
 const canSubmit = computed(() => step1Complete.value && selectedRunMode.value !== '' && selectedCountry.value !== '' && actionComment.value.trim() !== '')
@@ -218,6 +235,7 @@ const handleBeforeUnload = () => {
 onMounted(() => {
   loadState()
   window.addEventListener('beforeunload', handleBeforeUnload)
+  fetchUploadedFiles() // Fetch uploaded files when component mounts
 })
 
 // Clean up event listener

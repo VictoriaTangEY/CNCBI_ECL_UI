@@ -7,7 +7,35 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Base upload folder
-BASE_UPLOAD_FOLDER = r'C:/Users/UV665AR/OneDrive - EY/3.CNCBI/UI_log/UI_20250704 - Copy/app_vue/EY_working/99_data/02_param_upload_folder'
+BASE_UPLOAD_FOLDER = r'C:/Users/UV665AR/OneDrive - EY/Documents/GitHub/CNCBI_ECL_UI/EY_working/99_data/02_param_upload_folder'
+
+@app.route('/get_uploaded_files', methods=['GET'])
+def get_uploaded_files():
+    try:
+        file_type = request.args.get('type', 'all')  # 'parameter', 'dataCorrection', or 'all'
+        
+        # List all directories in the upload folder
+        all_dirs = [d for d in os.listdir(BASE_UPLOAD_FOLDER) 
+                   if os.path.isdir(os.path.join(BASE_UPLOAD_FOLDER, d))]
+        
+        # Filter based on file type
+        if file_type == 'parameter':
+            files = [d for d in all_dirs if d.startswith('param_')]
+        elif file_type == 'dataCorrection':
+            files = [d for d in all_dirs if d.startswith('dc_')]
+        else:
+            files = all_dirs
+            
+        # Sort files by timestamp (newest first)
+        files.sort(reverse=True)
+        
+        return jsonify({
+            'files': files,
+            'base_path': BASE_UPLOAD_FOLDER
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Error getting file list: {str(e)}'}), 500
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
