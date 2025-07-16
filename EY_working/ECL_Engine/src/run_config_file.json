@@ -1,18 +1,17 @@
 {
   "RUN_SETTING": {
-    "DATA_PATH": "C:\\Users\\SA814XM\\Engagement\\01_CNCBI\\CNCBI_ECL_Engine\\02_engine_server\\99_data\\01_merged_data_folder",
+    "DATA_PATH": "C:\\Users\\UV665AR\\OneDrive - EY\\Documents\\GitHub\\CNCBI_ECL_UI\\EY_working\\99_data\\01_merged_data_folder",
     "DATA_YYMM": 20241231,
 
     "PARAM_PATH": "C:\\Users\\UV665AR\\OneDrive - EY\\Documents\\GitHub\\CNCBI_ECL_UI\\EY_working\\99_data\\02_param_upload_folder",
 
-    "OUTPUT_PATH": "C:\\Users\\SA814XM\\Engagement\\01_CNCBI\\CNCBI_ECL_Engine\\02_engine_server\\99_data\\03_output_folder",
+    "OUTPUT_PATH": "C:\\Users\\UV665AR\\OneDrive - EY\\Documents\\GitHub\\CNCBI_ECL_UI\\EY_working\\99_data\\03_output_folder",
 
     "PREV_YYMM": 20231231,
-    "RUN_MODE": 6,
-    "COUNTRY": "All",
+    "RUN_MODE": 4,
     "TO_DB": "ON",
     "TEST_MODE": "ON",
-    "TEST_DEAL_LIST": [],
+    "TEST_DEAL_LIST": ["ALS:18100744000000000016255451","ALS:18100744000000000016297049"],
     "ECL_ADJ_MODE": "ON",
 
     "RUN_SCOPE": [
@@ -39,7 +38,8 @@
     "INPUT_DATA_EXT": "csv",
     "EXPOSURE_TABLE_NAME": "exposure_table",
     "COLLATERAL_TABLE_NAME": "collateral_table",
-    "SCHEDULE_TABLE_NAME": "schedule_table"
+    "SCHEDULE_TABLE_NAME": "schedule_table",
+    "FACILITY_TABLE_NAME": "facility_table"
   },
 
   "DB_SETTING": {
