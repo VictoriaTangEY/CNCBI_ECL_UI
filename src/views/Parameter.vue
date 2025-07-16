@@ -148,8 +148,8 @@ const allSelected = computed({
 })
 
 const selectedCategory = ref('')
-const parameterCategories = ['CCF', 'haircut', 'model segment']
-const adjustmentCategories = ['CCF', 'haircut', 'model segment']
+const parameterCategories = ['Regular', 'Irregular']
+const adjustmentCategories = ['Regular', 'Irregular']
 
 // Generate current timestamp
 const generateTimestamp = () => {

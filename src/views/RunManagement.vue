@@ -149,11 +149,20 @@
       </div>
 
     </main>
+    
+    <!-- Process Running Popup -->
+    <div v-if="showProcessPopup" class="process-popup">
+      <div class="process-popup-content">
+        <h3>ECL Engine Running</h3>
+        <p>{{ processStatus }}</p>
+        <div class="spinner"></div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -176,7 +185,7 @@ interface ReviewItem {
 // Replace hardcoded options with dynamic lists
 const parametersOptions = ref<string[]>([])
 const correctionsOptions = ref<string[]>([])
-const runModes = ['6', '9', '12']
+const runModes = ['4', '6', '9', '12']
 
 // Country selection
 const countryOptions = ['All', 'Hong Kong', 'Macau', 'Singapore', 'Others']
@@ -196,6 +205,12 @@ const step2Complete = ref(false)
 
 // Review list with localStorage persistence
 const reviewList = ref<ReviewItem[]>([])
+
+// Add new refs for process monitoring
+const showProcessPopup = ref(false)
+const processStatus = ref('ECL Engine is running. Please wait for results to be generated...')
+const currentProcessId = ref('')
+let statusCheckInterval: number | null = null
 
 // Function to fetch uploaded files from backend
 const fetchUploadedFiles = async () => {
@@ -245,6 +260,47 @@ onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 
+// Function to check process status
+async function checkProcessStatus() {
+  if (!currentProcessId.value) return
+  
+  try {
+    console.log('Checking process status for:', currentProcessId.value)
+    const response = await axios.get(`http://127.0.0.1:5010/check_process_status/${currentProcessId.value}`)
+    console.log('Process status response:', response.data)
+    const status = response.data
+    
+    if (!status.running) {
+      // Process completed
+      showProcessPopup.value = false
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval)
+        statusCheckInterval = null
+      }
+      
+      // Check for errors
+      if (status.errors && status.errors.length > 0) {
+        alert('ECL Engine encountered an error: ' + status.errors.join('\n'))
+        // Update status to error in review list
+        const runningItem = reviewList.value.find(item => item.status === 'Running')
+        if (runningItem) {
+          runningItem.status = 'Error'
+        }
+      } else {
+        alert('ECL Engine completed successfully!')
+        // Update status to completed in review list
+        const runningItem = reviewList.value.find(item => item.status === 'Running')
+        if (runningItem) {
+          runningItem.status = 'Completed'
+        }
+      }
+      saveState() // Save the updated status
+    }
+  } catch (error) {
+    console.error('Error checking process status:', error)
+  }
+}
+
 function onContinue() {
   if (canContinue.value) {
     step1Complete.value = true
@@ -258,7 +314,6 @@ async function onSubmit() {
   const pad = (n: number) => n.toString().padStart(2, '0')
   const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
-  // Call API to update run_config_file.json
   try {
     const configData = {
       selectedParameters: selectedParameters.value,
@@ -268,10 +323,35 @@ async function onSubmit() {
       country: selectedCountry.value
     }
     
-    const response = await axios.post('http://127.0.0.1:5010/update_run_config', configData)
-    console.log('Config update response:', response.data)
+    // First update the config file
+    const configResponse = await axios.post('http://127.0.0.1:5010/update_run_config', configData)
+    console.log('Config update response:', configResponse.data)
 
-    // Only add to review list if config update was successful
+    // Run ECL Engine with the new config file path
+    if (configResponse.data.new_config_path) {
+      try {
+        showProcessPopup.value = true // Show popup before starting the process
+        
+        const runResponse = await axios.post('http://127.0.0.1:5010/run_ecl_engine', {
+          configFilePath: configResponse.data.new_config_path
+        })
+        
+        if (runResponse.data.process_id) {
+          currentProcessId.value = runResponse.data.process_id
+          // Start checking status every 2 seconds
+          statusCheckInterval = setInterval(checkProcessStatus, 2000)
+        }
+        
+        console.log('ECL engine run response:', runResponse.data)
+      } catch (runError: any) {
+        showProcessPopup.value = false
+        console.error('Error running ECL engine:', runError)
+        alert('Failed to run ECL engine: ' + (runError.response?.data?.error || runError.message))
+        return
+      }
+    }
+
+    // Add to review list
     reviewList.value.unshift({
       maker: 'RMGUser_1',
       time: timeStr,
@@ -281,13 +361,13 @@ async function onSubmit() {
       runMode: selectedRunMode.value,
       country: selectedCountry.value,
       action: actionComment.value,
-      status: 'In review',
+      status: 'Running',
       checker: 'Waiting',
       approved: false,
       downloaded: false,
     })
     
-    // Reset form for next submission - allow user to select new parameters
+    // Reset form
     step1Complete.value = false
     step2Complete.value = false
     selectedParameters.value = ''
@@ -297,8 +377,9 @@ async function onSubmit() {
     selectedCountry.value = ''
     actionComment.value = ''
     
-    saveState() // Save to localStorage
+    saveState()
   } catch (error: any) {
+    showProcessPopup.value = false
     console.error('Error updating run config:', error)
     alert('Failed to update run configuration: ' + (error.response?.data?.error || error.message))
   }
@@ -526,5 +607,41 @@ function approveSelected() {
 }
 .step-btn {
   margin-left: 0;
+}
+
+.process-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.process-popup-content {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 20px auto;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #153D77;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>

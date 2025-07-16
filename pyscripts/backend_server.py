@@ -6,6 +6,9 @@ from werkzeug.utils import secure_filename
 import zipfile
 import shutil
 import json
+import subprocess
+import threading
+import time
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -202,6 +205,99 @@ def update_run_config():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Global variable to store process status
+process_status = {}
+
+def monitor_process(process, process_id):
+    """Monitor the process and capture its output"""
+    print(f"Started monitoring process {process_id}")
+    while True:
+        output = process.stdout.readline()
+        if output:
+            print(f"ECL Engine output: {output.strip()}")
+            process_status[process_id]['output'].append(output.strip())
+        
+        error = process.stderr.readline()
+        if error:
+            print(f"ECL Engine error: {error.strip()}")
+            process_status[process_id]['errors'].append(error.strip())
+            
+        if process.poll() is not None:
+            print(f"Process {process_id} completed with return code: {process.returncode}")
+            process_status[process_id]['running'] = False
+            break
+            
+    remaining_output, remaining_error = process.communicate()
+    if remaining_output:
+        print(f"Final output: {remaining_output.decode().strip()}")
+        process_status[process_id]['output'].extend(remaining_output.decode().strip().split('\n'))
+    if remaining_error:
+        print(f"Error output: {remaining_error.decode().strip()}")
+        process_status[process_id]['errors'].extend(remaining_error.decode().strip().split('\n'))
+    print(f"Finished monitoring process {process_id}")
+
+# Run Management: Run ECL Engine
+@app.route('/run_ecl_engine', methods=['POST'])
+def run_ecl_engine():
+    try:
+        # Get config file path from request
+        data = request.get_json()
+        config_file_path = data.get('configFilePath', '')
+        
+        if not config_file_path or not os.path.exists(config_file_path):
+            return jsonify({'error': 'Invalid config file path'}), 400
+
+        # Get the directory containing main.py
+        main_py_dir = os.path.join(BASE_ECL_ENGINE, 'src')
+        
+        # Change to the directory containing main.py
+        current_dir = os.getcwd()
+        os.chdir(main_py_dir)
+        
+        # Run main.py with the config file
+        cmd = f'python main.py --configPath {os.path.basename(config_file_path)}'
+        print(f"Running command: {cmd}")
+        
+        # Run the command
+        process = subprocess.Popen(
+            cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        # Change back to original directory
+        os.chdir(current_dir)
+            
+        return jsonify({
+            'status': 'success',
+            'message': 'ECL engine started successfully'
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# New endpoint to check process status
+@app.route('/check_process_status/<process_id>', methods=['GET'])
+def check_process_status(process_id):
+    print(f"Checking status for process: {process_id}")
+    if process_id not in process_status:
+        print(f"Process {process_id} not found")
+        return jsonify({'error': 'Process not found'}), 404
+        
+    status = process_status[process_id]
+    print(f"Current status for process {process_id}:")
+    print(f"Running: {status['running']}")
+    print(f"Output lines: {len(status['output'])}")
+    print(f"Error lines: {len(status['errors'])}")
+    
+    return jsonify({
+        'running': status['running'],
+        'output': status['output'],
+        'errors': status['errors'],
+        'start_time': status['start_time']
+    }), 200
 
 # Test: show run time
 @app.route('/test', methods=['GET'])
