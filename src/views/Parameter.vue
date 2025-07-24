@@ -119,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 
 const currentTab = ref<'parameter' | 'adjustment'>('parameter')
@@ -135,7 +135,7 @@ const versionSuffix = ref('')
 // Current timestamp
 const currentTimestamp = ref('')
 
-// Unified review list with localStorage persistence
+// Unified review list from database
 const reviewList = ref<any[]>([])
 
 const messageClass = computed(() => message.value.includes('✅') ? 'success' : message.value.includes('❌') ? 'error' : 'info')
@@ -172,45 +172,27 @@ watch(currentTab, () => {
   currentTimestamp.value = generateTimestamp()
 })
 
-// Load saved data from localStorage
-const loadState = () => {
-  // Check if this is a page refresh by looking for a session flag
-  const isRefresh = sessionStorage.getItem('isRefresh')
-  if (isRefresh) {
-    // This is a refresh, clear localStorage and reset
-    localStorage.removeItem('parameterReviewList')
-    sessionStorage.removeItem('isRefresh')
-    reviewList.value = []
-  } else {
-    // This is navigation, load saved data
-    const savedReviewList = localStorage.getItem('parameterReviewList')
-    if (savedReviewList) {
-      reviewList.value = JSON.parse(savedReviewList)
-    }
+// Load data from database
+const loadReviewRecords = async () => {
+  try {
+    // const response = await axios.get('https://10.25.108.72/api/get_review_records')
+    const response = await axios.get('http://127.0.0.1:5010/get_review_records')
+    reviewList.value = response.data.records.map((record: any) => ({
+      ...record,
+      approved: record.status === 'Approved',
+      downloaded: false,
+      selected: false
+    }))
+  } catch (error) {
+    console.error('Error loading review records:', error)
   }
-}
-
-// Save data to localStorage
-const saveState = () => {
-  localStorage.setItem('parameterReviewList', JSON.stringify(reviewList.value))
-}
-
-// Handle page refresh - set session flag
-const handleBeforeUnload = () => {
-  sessionStorage.setItem('isRefresh', 'true')
 }
 
 // Load data when component mounts
 onMounted(() => {
-  loadState()
-  window.addEventListener('beforeunload', handleBeforeUnload)
+  loadReviewRecords()
   // 初始化时间戳
   currentTimestamp.value = generateTimestamp()
-})
-
-// Clean up event listener
-onUnmounted(() => {
-  window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 
 const triggerFileInput = (e: Event) => {
@@ -249,12 +231,13 @@ const uploadFile = async () => {
 
   const formData = new FormData()
   formData.append('file', selectedFile.value)
-  formData.append('fileType', currentTab.value)
+  formData.append('fileType', currentTab.value === 'parameter' ? 'parameter' : 'adjustment')
   formData.append('suffix', versionSuffix.value.trim())
   formData.append('category', selectedCategory.value)
 
   try {
     message.value = '⏳ Uploading...'
+    // const response = await axios.post('https://10.25.108.72/api/upload', formData, {
     const response = await axios.post('http://127.0.0.1:5010/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
@@ -263,39 +246,8 @@ const uploadFile = async () => {
     fileInput.value!.value = ''
     uploadTried.value = true
 
-    const now = new Date()
-    const pad = (n: number) => n.toString().padStart(2, '0')
-    const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-    
-    // Generate folder name based on available components
-    const prefix = currentTab.value === 'parameter' ? 'par' : 'adj'
-    let folderName = `${prefix}_${currentTimestamp.value}`
-    if (selectedCategory.value) {
-      folderName += `_${selectedCategory.value}`
-    }
-    if (versionSuffix.value.trim()) {
-      folderName += `_${versionSuffix.value.trim()}`
-    }
-
-    const newRecord = {
-      maker: 'RMGUser_1',
-      time: timeStr,
-      type: currentTab.value === 'parameter' ? 'Parameter' : 'Adjustment',
-      category: selectedCategory.value || '',
-      timestamp: currentTimestamp.value,
-      suffix: versionSuffix.value.trim(),
-      action: `upload: ${folderName}`,
-      status: 'In review',
-      checker: 'Waiting',
-      approved: false,
-      downloaded: false,
-      selected: false,
-      file: selectedFile.value
-    }
-
-    reviewList.value.unshift(newRecord)
+    await loadReviewRecords()
     selectedFile.value = null
-    saveState()
   } catch (error: any) {
     message.value = '❌ ' + (error.response?.data?.error || 'Upload failed.')
     uploadSuccess.value = false
@@ -303,36 +255,55 @@ const uploadFile = async () => {
   }
 }
 
-const downloadRow = (index: number) => {
+const downloadRow = async (index: number) => {
   const item = reviewList.value[index]
-  if (item.file) {
-    // Create a download link
-    const url = URL.createObjectURL(item.file)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = item.file.name
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+  try {
+    // Call the download API
+    // const response = await axios.get(`https://10.25.108.72/api/download_files/${item.id}`, {
+    const response = await axios.get(`http://127.0.0.1:5010/download_files/${item.id}`, {
+      responseType: 'blob'
+    })
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${item.action.replace('upload: ', '')}.zip`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
     
     item.downloaded = true
-    saveState() // Save to localStorage
+  } catch (error) {
+    console.error('Download failed:', error)
+    alert('Download failed. Please try again.')
   }
 }
 
-const approveSelected = () => {
-  reviewList.value.forEach(item => {
-    if (item.selected) {
-      item.approved = true
-      item.status = 'Approved'
-      item.checker = 'RMGUser_2'
+const approveSelected = async () => {
+  try {
+    const selectedItems = reviewList.value.filter(item => item.selected)
+    
+    for (const item of selectedItems) {
+      // Call API to update approval status
+      // await axios.post('https://10.25.108.72/api/update_approval_status', {
+      await axios.post('http://127.0.0.1:5010/update_approval_status', {
+        id: item.id,
+        status: 'Approved',
+        checker: 'RMGUser_2'
+      })
     }
-  })
-  saveState() // Save to localStorage
+    
+    // Refresh the review list from database
+    await loadReviewRecords()
+    
+  } catch (error) {
+    console.error('Approval failed:', error)
+    alert('Approval failed. Please try again.')
+  }
 }
 </script>
-
 
 <style scoped>
 .upload-box {
