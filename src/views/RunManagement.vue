@@ -4,10 +4,10 @@
     <aside style="width: 280px; background-color: #f5f5f5; padding: 30px 20px;">
       <h3 style="font-weight: bold; font-size: 22px; margin-bottom: 24px;">Run Management</h3>
     </aside>
-
+ 
     <!-- 主体内容 -->
     <main style="flex-grow: 1; padding: 40px;">
-      
+     
       <!-- 面包屑导航 -->
       <nav aria-label="breadcrumb" class="breadcrumb-nav">
         <ol class="breadcrumb-list">
@@ -16,7 +16,7 @@
           <li>Production</li>
         </ol>
       </nav>
-      
+     
       <!-- Configuration Box with Progress Bar -->
       <div class="config-outer-box">
         <div class="progress-bar">
@@ -101,7 +101,7 @@
           </div>
         </div>
       </div>
-      
+     
       <!-- Review Box -->
       <div>
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Review</h2>
@@ -128,7 +128,7 @@
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
                 <td style="text-align: left; padding: 16px 18px; border-bottom: 1px solid #e0e0e0; min-width: 260px; font-size: 15px; line-height: 1.7;">
                   <div class="param-item"><span class="param-label">Parameter:</span> <span class="param-value">{{ item.parameter }}</span></div>
-                  <div class="param-item"><span class="param-label">Adjustment:</span> <span class="param-value">{{ item.dataCorrection }}</span></div>
+                  <div class="param-item"><span class="param-label">Adjustment:</span> <span class="param-value">{{ item.adjustment }}</span></div>
                   <div class="param-item"><span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.reportingDate }}</span></div>
                   <div class="param-item"><span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span></div>
                   <div class="param-item"><span class="param-label">Country:</span> <span class="param-value">{{ item.country }}</span></div>
@@ -147,31 +147,32 @@
           <button class="upload-button" style="background: #FF612C;" @click="approveSelected">Confirm</button>
         </div>
       </div>
-
+ 
     </main>
-    
+   
     <!-- Process Running Popup -->
     <div v-if="showProcessPopup" class="process-popup">
       <div class="process-popup-content">
         <h3>ECL Engine Running</h3>
-        <p>{{ processStatus }}</p>
+        <p>ECL Engine is running. Please wait for results to be generated...</p>
         <div class="spinner"></div>
+        <button @click="closeProcessPopup" style="margin-top: 16px; padding: 8px 20px; border-radius: 6px; border: none; background: #eee; cursor: pointer;">Close</button>
       </div>
     </div>
   </div>
 </template>
-
+ 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-
+ 
 // Define the type for review list items
 interface ReviewItem {
   maker: string
   time: string
   parameter: string
-  dataCorrection: string
+  adjustment: string
   reportingDate: string
   runMode: string
   country: string
@@ -180,183 +181,106 @@ interface ReviewItem {
   checker: string
   approved: boolean
   downloaded: boolean
+  taskId?: string // Added taskId to the interface
 }
-
+ 
 // Replace hardcoded options with dynamic lists
 const parametersOptions = ref<string[]>([])
 const correctionsOptions = ref<string[]>([])
-const runModes = ['4', '6', '9', '12']
-
+const runModes = ['4', '6', '9', '12', '15']
+ 
 // Country selection
 const countryOptions = ['All', 'Hong Kong', 'Macau', 'Singapore', 'Others']
-
+ 
 // Reporting date options
 const reportingDateOptions = ['2024-12-31', '2024-06-30', '2024-03-31', '2023-12-31', '2023-06-30']
-
+ 
 const selectedParameters = ref('')
 const selectedCorrections = ref('')
 const selectedReportingDate = ref('')
 const selectedRunMode = ref('')
 const selectedCountry = ref('')
 const actionComment = ref('')
-
+ 
 const step1Complete = ref(false)
 const step2Complete = ref(false)
-
+ 
 // Review list with localStorage persistence
 const reviewList = ref<ReviewItem[]>([])
-
+ 
 // Add new refs for process monitoring
 const showProcessPopup = ref(false)
-const processStatus = ref('ECL Engine is running. Please wait for results to be generated...')
-const currentProcessId = ref('')
-let statusCheckInterval: number | null = null
-
-// Function to fetch uploaded files from backend
-const fetchUploadedFiles = async () => {
-  try {
-    // Fetch parameters
-    const paramResponse = await axios.get('http://127.0.0.1:5010/get_uploaded_files?type=parameter')
-    parametersOptions.value = paramResponse.data.files
-    
-    // Fetch adjustments
-    const corrResponse = await axios.get('http://127.0.0.1:5010/get_uploaded_files?type=dataCorrection')
-    correctionsOptions.value = corrResponse.data.files
-  } catch (error) {
-    console.error('Error fetching uploaded files:', error)
-  }
+const processPopupClosed = ref(false)
+ 
+function closeProcessPopup() {
+  showProcessPopup.value = false
+  processPopupClosed.value = true
 }
-
-const canContinue = computed(() => selectedParameters.value !== '' && selectedCorrections.value !== '' && selectedReportingDate.value !== '')
-const canSubmit = computed(() => step1Complete.value && selectedRunMode.value !== '' && selectedCountry.value !== '' && actionComment.value.trim() !== '')
-
-// Load saved data from localStorage
-const loadState = () => {
-  const savedReviewList = localStorage.getItem('runManagementReviewList')
-  if (savedReviewList) {
-    reviewList.value = JSON.parse(savedReviewList)
-  }
-}
-
-// Save data to localStorage
-const saveState = () => {
-  localStorage.setItem('runManagementReviewList', JSON.stringify(reviewList.value))
-}
-
-// Handle page refresh - clear localStorage
-const handleBeforeUnload = () => {
-  localStorage.removeItem('runManagementReviewList')
-}
-
-// Load data when component mounts
-onMounted(() => {
-  loadState()
-  window.addEventListener('beforeunload', handleBeforeUnload)
-  fetchUploadedFiles() // Fetch uploaded files when component mounts
-})
-
-// Clean up event listener
-onUnmounted(() => {
-  window.removeEventListener('beforeunload', handleBeforeUnload)
-})
-
-// Function to check process status
-async function checkProcessStatus() {
-  if (!currentProcessId.value) return
-  
-  try {
-    console.log('Checking process status for:', currentProcessId.value)
-    const response = await axios.get(`http://127.0.0.1:5010/check_process_status/${currentProcessId.value}`)
-    console.log('Process status response:', response.data)
-    const status = response.data
-    
-    if (!status.running) {
-      // Process completed
-      showProcessPopup.value = false
-      if (statusCheckInterval) {
-        clearInterval(statusCheckInterval)
-        statusCheckInterval = null
-      }
-      
-      // Check for errors
-      if (status.errors && status.errors.length > 0) {
-        alert('ECL Engine encountered an error: ' + status.errors.join('\n'))
-        // Update status to error in review list
-        const runningItem = reviewList.value.find(item => item.status === 'Running')
-        if (runningItem) {
-          runningItem.status = 'Error'
-        }
-      } else {
-        alert('ECL Engine completed successfully!')
-        // Update status to completed in review list
-        const runningItem = reviewList.value.find(item => item.status === 'Running')
-        if (runningItem) {
-          runningItem.status = 'Completed'
-        }
-      }
-      saveState() // Save the updated status
-    }
-  } catch (error) {
-    console.error('Error checking process status:', error)
-  }
-}
-
+ 
 function onContinue() {
   if (canContinue.value) {
     step1Complete.value = true
   }
 }
-
+ 
+// Function to fetch uploaded files from backend
+const fetchUploadedFiles = async () => {
+  try {
+    // Fetch parameters
+    const paramResponse = await axios.get('https://10.25.108.72/api/get_uploaded_files?type=parameter')
+    parametersOptions.value = paramResponse.data.files
+   
+    // Fetch adjustments
+    const corrResponse = await axios.get('https://10.25.108.72/api/get_uploaded_files?type=adjustment')
+    correctionsOptions.value = corrResponse.data.files
+  } catch (error) {
+    console.error('Error fetching uploaded files:', error)
+  }
+}
+ 
+const canContinue = computed(() => selectedParameters.value !== '' && selectedCorrections.value !== '' && selectedReportingDate.value !== '')
+const canSubmit = computed(() => step1Complete.value && selectedRunMode.value !== '' && selectedCountry.value !== '' && actionComment.value.trim() !== '')
+ 
+// Load data when component mounts
+onMounted(() => {
+  fetchReviewListFromDB()
+  fetchUploadedFiles() // Fetch uploaded files when component mounts
+})
+ 
+// Clean up event listener
+onUnmounted(() => {
+  // No longer need to remove event listener since we removed handleBeforeUnload
+})
+ 
 async function onSubmit() {
   if (!canSubmit.value) return
-
+ 
   const now = new Date()
   const pad = (n: number) => n.toString().padStart(2, '0')
   const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-
+ 
   try {
-    const configData = {
+    showProcessPopup.value = true
+    processPopupClosed.value = false
+ 
+    // 提交任务，获取 task_id
+    const runResponse = await axios.post('https://10.25.108.72/api/run_ecl_engine', {
       selectedParameters: selectedParameters.value,
       selectedCorrections: selectedCorrections.value,
       reportingDate: selectedReportingDate.value,
       runMode: selectedRunMode.value,
-      country: selectedCountry.value
-    }
-    
-    // First update the config file
-    const configResponse = await axios.post('http://127.0.0.1:5010/update_run_config', configData)
-    console.log('Config update response:', configResponse.data)
-
-    // Run ECL Engine with the new config file path
-    if (configResponse.data.new_config_path) {
-      try {
-        showProcessPopup.value = true // Show popup before starting the process
-        
-        const runResponse = await axios.post('http://127.0.0.1:5010/run_ecl_engine', {
-          configFilePath: configResponse.data.new_config_path
-        })
-        
-        if (runResponse.data.process_id) {
-          currentProcessId.value = runResponse.data.process_id
-          // Start checking status every 2 seconds
-          statusCheckInterval = setInterval(checkProcessStatus, 2000)
-        }
-        
-        console.log('ECL engine run response:', runResponse.data)
-      } catch (runError: any) {
-        showProcessPopup.value = false
-        console.error('Error running ECL engine:', runError)
-        alert('Failed to run ECL engine: ' + (runError.response?.data?.error || runError.message))
-        return
-      }
-    }
-
-    // Add to review list
+      country: selectedCountry.value,
+      action: actionComment.value
+    })
+ 
+    const taskId = runResponse.data.task_id
+ 
+    // 立即添加到review列表，初始状态为 Running
     reviewList.value.unshift({
       maker: 'RMGUser_1',
       time: timeStr,
       parameter: selectedParameters.value,
-      dataCorrection: selectedCorrections.value,
+      adjustment: selectedCorrections.value,
       reportingDate: selectedReportingDate.value,
       runMode: selectedRunMode.value,
       country: selectedCountry.value,
@@ -365,9 +289,40 @@ async function onSubmit() {
       checker: 'Waiting',
       approved: false,
       downloaded: false,
+      taskId // 新增字段
     })
-    
-    // Reset form
+
+    // 轮询任务状态
+    const pollStatus = async () => {
+      try {
+        const statusResponse = await axios.get(`https://10.25.108.72/api/task_status/${taskId}`)
+        const status = statusResponse.data.status
+        // 找到对应的review item，更新status
+        const item = reviewList.value.find(i => i.taskId === taskId)
+        if (item) {
+          if (status === 'completed') {
+            item.status = 'Completed'
+            showProcessPopup.value = false
+            if (!processPopupClosed.value) alert('ECL Engine completed successfully!')
+            return
+          } else if (status === 'failed') {
+            item.status = 'Failed'
+            showProcessPopup.value = false
+            if (!processPopupClosed.value) alert('ECL Engine failed!')
+            return
+          } else {
+            item.status = 'Running'
+          }
+        }
+        setTimeout(pollStatus, 5000)
+      } catch (error: any) {
+        showProcessPopup.value = false
+        if (!processPopupClosed.value) alert(error.message || 'An error occurred while running the ECL engine')
+      }
+    }
+    pollStatus()
+ 
+    // 重置表单
     step1Complete.value = false
     step2Complete.value = false
     selectedParameters.value = ''
@@ -376,24 +331,22 @@ async function onSubmit() {
     selectedRunMode.value = ''
     selectedCountry.value = ''
     actionComment.value = ''
-    
-    saveState()
+ 
   } catch (error: any) {
     showProcessPopup.value = false
-    console.error('Error updating run config:', error)
-    alert('Failed to update run configuration: ' + (error.response?.data?.error || error.message))
+    if (!processPopupClosed.value) alert(error.message || 'An error occurred while running the ECL engine')
   }
 }
-
+ 
 const router = useRouter()
-
+ 
 // Add a ref to track the selected review index
 const selectedReviewIndex = ref<number | null>(null)
-
+ 
 function selectReview(index: number) {
   selectedReviewIndex.value = index
 }
-
+ 
 function downloadRow(index: number) {
   const item = reviewList.value[index]
   const blob = new Blob([], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -406,9 +359,8 @@ function downloadRow(index: number) {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
   item.downloaded = true
-  saveState() // Save to localStorage
 }
-
+ 
 function approveSelected() {
   if (selectedReviewIndex.value === null) return
   const item = reviewList.value[selectedReviewIndex.value]
@@ -416,14 +368,40 @@ function approveSelected() {
     item.approved = true
     item.status = 'Confirmed'
     item.checker = 'RMGUser_2'
-    saveState() // Save to localStorage
     // After confirming, navigate to the reporting page
     router.push('/reporting')
   }
 }
+
+const fetchReviewListFromDB = async () => {
+  try {
+    const res = await axios.get('https://10.25.108.72/api/get_eclengine_records')
+    reviewList.value = res.data.records.map((item: any) => {
+      let settings: any = {}
+      try { settings = JSON.parse(item.settings) } catch {}
+      return {
+        maker: item.maker,
+        time: item.time,
+        parameter: settings.selectedParameters || '',
+        adjustment: settings.selectedCorrections || '',
+        reportingDate: settings.reportingDate || '',
+        runMode: settings.runMode || '',
+        country: settings.country || '',
+        action: item.action,
+        status: item.status,
+        checker: item.checker,
+        approved: false,
+        downloaded: false,
+        taskId: settings.task_id || ''
+      }
+    })
+  } catch (e) {
+    console.error('Error fetching ECL engine records:', e)
+  }
+}
 </script>
-
-
+ 
+ 
 <style scoped>
 .breadcrumb-nav {
   margin-bottom: 18px;
@@ -443,7 +421,7 @@ function approveSelected() {
   margin: 0 6px;
   color: #bbb;
 }
-
+ 
 .config-outer-box {
   background: #fff;
   border-radius: 10px;
@@ -608,7 +586,7 @@ function approveSelected() {
 .step-btn {
   margin-left: 0;
 }
-
+ 
 .process-popup {
   position: fixed;
   top: 0;
@@ -621,7 +599,7 @@ function approveSelected() {
   align-items: center;
   z-index: 1000;
 }
-
+ 
 .process-popup-content {
   background: white;
   padding: 30px;
@@ -629,7 +607,7 @@ function approveSelected() {
   text-align: center;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
-
+ 
 .spinner {
   width: 40px;
   height: 40px;
@@ -639,9 +617,10 @@ function approveSelected() {
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
-
+ 
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 </style>
+ 
