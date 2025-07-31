@@ -23,8 +23,14 @@
             Download ECL reporting documents.
           </p>
 
+          <!-- Loading Message -->
+          <div v-if="loading" style="text-align: center; padding: 40px; color: #666;">
+            <h3 style="font-size: 20px; margin-bottom: 10px;">Checking Report Availability...</h3>
+            <div class="spinner"></div>
+          </div>
+
           <!-- 下载卡片区域 -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
+          <div v-if="!loading" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px;">
             <div v-for="(report, idx) in reports" :key="idx" style="border: 1px solid #e0e0e0; padding: 24px; border-radius: 10px; background: #fff; box-shadow: 0 2px 8px rgba(21,61,119,0.04);">
               <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">{{ report.title }}</h3>
               <p style="font-size: 15px; color: #888; margin-bottom: 16px;">{{ report.description }}</p>
@@ -34,11 +40,77 @@
         </div>
       </div>
     </main>
+
+    <!-- No Timestamp Popup -->
+    <div v-if="showNoTimestampPopup" class="popup-overlay">
+      <div class="popup-content">
+        <h3 style="font-size: 20px; margin-bottom: 15px; color: #333;">No Reports Selected</h3>
+        <p style="font-size: 16px; color: #666; margin-bottom: 25px; line-height: 1.5;">
+          Please select a record from Run Management and click Confirm to view reports.
+        </p>
+        <div style="text-align: center;">
+          <router-link to="/run-management" class="popup-btn">
+            Go to Run Management
+          </router-link>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import axios from 'axios'
+
+const route = useRoute()
+
+// Get timestamp from route query parameters
+const timestamp = ref(String(route.query.timestamp || ''))
+
+// Dynamic report base path
+const reportBasePath = ref('')
+
+// Add state for report availability
+const reportsAvailable = ref(false)
+const loading = ref(true)
+
+// Add state for popup visibility
+const showNoTimestampPopup = ref(false)
+
+// Compute the dynamic report base path
+const computeReportBasePath = () => {
+  if (timestamp.value) {
+    // Construct the path: /u01/Apps/EY_working/99_data/03_output_folder/timestamp/{data_yymm}_{timestamp_date}/03_result
+    // The {data_yymm}_{timestamp_date} folder is automatically created by ECL Engine
+    reportBasePath.value = `/u01/Apps/EY_working/99_data/03_output_folder/${timestamp.value}`
+  } else {
+    // No timestamp available, cannot construct path
+    reportBasePath.value = ''
+    console.warn('No timestamp available for report path construction')
+  }
+  console.log('Using report base path:', reportBasePath.value)
+}
+
+// Add function to check report availability
+async function checkReportAvailability() {
+  if (!timestamp.value) {
+    reportsAvailable.value = false
+    loading.value = false
+    showNoTimestampPopup.value = true
+    return
+  }
+
+  try {
+    const response = await axios.get(`https://10.25.108.72/api/check_report_availability/${timestamp.value}`)
+    reportsAvailable.value = response.data.has_reports
+  } catch (error) {
+    console.error('Error checking report availability:', error)
+    reportsAvailable.value = false
+  } finally {
+    loading.value = false
+  }
+}
 
 const reports = [
   {
@@ -73,18 +145,81 @@ const reports = [
   }
 ]
 
-function downloadReport(reportTitle) {
-  // Create a dummy file for illustration
-  const blob = new Blob(["This is a dummy report file for illustration purposes."], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${reportTitle.toLowerCase().replace(/\s+/g, '_')}.xlsx`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+async function downloadReport(reportTitle) {
+  // Check if we have a timestamp
+  if (!timestamp.value) {
+    showNoTimestampPopup.value = true
+    return
+  }
+
+  try {
+    let endpoint = ''
+    let filename = ''
+    
+    // Map report titles to backend endpoints
+    switch (reportTitle) {
+      case 'ECL Monthly Report':
+        endpoint = '/download_ecl_monthly_report'
+        filename = 'reporting_ecl_result_to_rmg.xlsx'
+        break
+      case 'ECL Summary Report':
+        endpoint = '/download_ecl_summary_report'
+        filename = 'reporting_ecl_result_summary.xlsx'
+        break
+      case 'BU Excel Report':
+        endpoint = '/download_bu_excel_reports'
+        filename = 'BU_Excel_Reports.zip'
+        break
+      case 'HKMA Reports':
+      case 'Audit Trail Report':
+      case 'GL Posting Report':
+        // These reports are not implemented yet, do nothing
+        console.log(`${reportTitle} download not implemented yet`)
+        return
+      default:
+        console.error('Unknown report type:', reportTitle)
+        return
+    }
+    
+    // Make API call to backend with dynamic report base path
+    const apiUrl = new URL(`https://10.25.108.72/api${endpoint}`)
+    apiUrl.searchParams.append('report_base_path', reportBasePath.value)
+    
+    const response = await fetch(apiUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    // Download the file
+    const blob = await response.blob()
+    const downloadUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(downloadUrl)
+    
+    console.log(`Successfully downloaded ${reportTitle} from ${reportBasePath.value}`)
+  } catch (error) {
+    console.error(`Error downloading ${reportTitle}:`, error)
+    // You could add a user notification here if needed
+    alert(`Failed to download ${reportTitle}.`)
+  }
 }
+
+// Initialize when component mounts
+onMounted(() => {
+  computeReportBasePath()
+  checkReportAvailability()
+})
 </script>
 
 <style scoped>
@@ -146,5 +281,60 @@ function downloadReport(reportTitle) {
 }
 .step-btn:hover {
   background: #e0e0e0;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 20px auto;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #153D77;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Popup Styles */
+.popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.popup-content {
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  max-width: 400px;
+  width: 90%;
+}
+
+.popup-btn {
+  padding: 10px 25px;
+  background: #FF612C;
+  color: #fff;
+  border-radius: 20px;
+  border: none;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.3s;
+}
+
+.popup-btn:hover {
+  background: #e05222;
 }
 </style> 

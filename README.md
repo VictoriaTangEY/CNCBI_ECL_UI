@@ -42,13 +42,13 @@ npm run dev
 
 ### Backend Endpoints
 
-- **Upload File**: `POST http://localhost:5001/upload`
-  - Form data: `file` (file), `fileType` (string: 'parameter' or 'dataCorrection'), `suffix` (string: user input)
+- **Upload File**: `POST http://localhost:5010/upload`
+  - Form data: `file` (file), `fileType` (string: 'parameter' or 'adjustment'), `suffix` (string: user input)
   - File naming: 
-    - Parameter files: `param_YYYYMMDDHHMMSS_suffix.ext` (folder: `param_YYYYMMDDHHMMSS_suffix`)
-    - Data correction files: `dc_YYYYMMDDHHMMSS_suffix.ext` (folder: `dc_YYYYMMDDHHMMSS_suffix`)
-    - If no suffix: `param_YYYYMMDDHHMMSS.ext` (folder: `param_YYYYMMDDHHMMSS`)
-- **Test**: `GET http://localhost:5001/test`
+    - Parameter files: `par_YYYYMMDDHHMMSS_suffix.ext` (folder: `par_YYYYMMDDHHMMSS_suffix`)
+    - Adjustment files: `adj_YYYYMMDDHHMMSS_suffix.ext` (folder: `adj_YYYYMMDDHHMMSS_suffix`)
+    - If no suffix: `par_YYYYMMDDHHMMSS.ext` (folder: `par_YYYYMMDDHHMMSS`)
+- **Test**: `GET http://localhost:5010/test`
 
 ### Frontend
 

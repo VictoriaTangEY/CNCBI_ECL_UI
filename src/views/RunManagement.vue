@@ -20,7 +20,7 @@
       <!-- Configuration Box with Progress Bar -->
       <div class="config-outer-box">
         <div class="progress-bar">
-          <div class="progress-bar-inner" :style="{ width: step2Complete ? '100%' : step1Complete ? '50%' : '0%' }"></div>
+          <div class="progress-bar-inner" :style="{ width: getProgressWidth() }"></div>
         </div>
         <div class="config-inner-box">
           <div class="steps-row">
@@ -91,13 +91,109 @@
               </div>
             </div>
           </div>
+          <div class="steps-row">
+            <div class="step-box">
+              <div class="step-title">
+                <div class="step-circle" :class="{ active: !step3Complete, done: step3Complete }">
+                  <svg v-if="!step3Complete" style="width:10px; height:10px; stroke:#ff4848;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="6" x2="12" y2="12" />
+                    <line x1="12" y1="18" x2="12" y2="18" />
+                  </svg>
+                  <svg v-else style="width:10px; height:10px; stroke:#4CAF50;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                </div>
+                3. Resume Run
+              </div>
+              <div class="step-status">{{ step3Complete ? 'Complete' : 'Ready to resume' }}</div>
+              <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-direction: column;">
+                <div style="display: flex; gap: 10px;">
+                  <select v-model="selectedResumeConfig" :disabled="step3Complete" class="select-input">
+                    <option disabled value="">Select configuration file</option>
+                    <option v-for="config in resumeConfigOptions" :key="config" :value="config">{{ config }}</option>
+                  </select>
+                  <select v-model="selectedResumeRunMode" :disabled="step3Complete" class="select-input">
+                    <option disabled value="">Select resume run mode</option>
+                    <option v-for="mode in resumeRunModes" :key="mode" :value="mode">{{ mode }}</option>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                  <input v-model="resumeActionComment" :disabled="step3Complete" placeholder="Provide action comment here" class="select-input" style="flex: 1;" />
+                </div>
+              </div>
+              <div style="text-align: right; margin-top: 8px;">
+                <button @click="onResumeSubmit" :disabled="!canResumeSubmit || step3Complete" class="step-btn">{{ step3Complete ? 'Completed' : 'Resume' }}</button>
+              </div>
+            </div>
+            <div class="step-box">
+              <div class="step-title">
+                <div class="step-circle" :class="{ active: !step4Complete, done: step4Complete }">
+                  <svg v-if="!step4Complete" style="width:10px; height:10px; stroke:#ff4848;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="6" x2="12" y2="12" />
+                    <line x1="12" y1="18" x2="12" y2="18" />
+                  </svg>
+                  <svg v-else style="width:10px; height:10px; stroke:#4CAF50;" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                </div>
+                4. Generate Report
+              </div>
+              <div class="step-status">{{ step4Complete ? 'Complete' : 'Ready to generate report' }}</div>
+              <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-direction: column;">
+                <div style="display: flex; gap: 10px;">
+                  <select v-model="selectedReportConfig" :disabled="step4Complete" class="select-input">
+                    <option disabled value="">Select configuration file</option>
+                    <option v-for="config in reportConfigOptions" :key="config" :value="config">{{ config }}</option>
+                  </select>
+                  <div class="fixed-input">Run mode 6</div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                  <input v-model="reportActionComment" :disabled="step4Complete" placeholder="Provide action comment here" class="select-input" style="flex: 1;" />
+                </div>
+              </div>
+              <div style="text-align: right; margin-top: 8px;">
+                <button @click="onGenerateReportSubmit" :disabled="!canGenerateReportSubmit || step4Complete" class="step-btn">{{ step4Complete ? 'Completed' : 'Generate Report' }}</button>
+              </div>
+            </div>
+          </div>
           <div class="instructions-box">
             <p class="instructions-title">Instructions:</p>
             <ul class="instructions-list">
               <li>1. Please choose parameters and adjustments. If no changes, please choose default and continue.</li>
               <li>2. Please choose run mode and fill in action comment.</li>
               <li>3. Submit to generate the run record.</li>
+              <li>4. To resume a failed run, select the configuration file and choose the resume run mode.</li>
+              <li>5. To generate reports, select the configuration file and run mode will be fixed to 6.</li>
             </ul>
+            <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px; border-left: 4px solid #153D77;">
+              <h4 style="margin: 0 0 10px 0; color: #153D77; font-size: 16px;">Run Mode Description:</h4>
+              <div style="font-size: 14px; line-height: 1.6; color: #333;">
+                <div style="margin-bottom: 10px;">
+                  <strong>Individual Run Modes:</strong>
+                  <ul style="margin: 5px 0 10px 20px; padding: 0;">
+                    <li><strong>0:</strong> Data Merge Only - Converts and merges raw data files</li>
+                    <li><strong>1:</strong> Deal Append - Appends new deals to existing data</li>
+                    <li><strong>2:</strong> Pre-Run Validation - Validates data before ECL calculation</li>
+                    <li><strong>3:</strong> ECL Calculation - Performs core ECL calculations</li>
+                    <li><strong>4:</strong> Post-Run Adjustments1 - Applies stage 3 and output adjustments</li>
+                    <li><strong>5:</strong> Post-Run Validation2 - Validates calculation results</li>
+                    <li><strong>6:</strong> Reporting - Generate reports</li>
+                  </ul>
+                </div>
+                <div>
+                  <strong>Combined Run Modes:</strong>
+                  <ul style="margin: 5px 0 0 20px; padding: 0;">
+                    <li><strong>0-5:</strong> Full pipeline (including data merge) - Steps 0 through 5</li>
+                    <li><strong>1-5:</strong> Deal append – Post-run data sanity check - Steps 1 through 5</li>
+                    <li><strong>2-5:</strong> Pre-run data sanity check – Post-run data sanity check - Steps 2 through 5</li>
+                    <li><strong>3-5:</strong> ECL calculation – Post-run data sanity check - Steps 3 through 5</li>
+                    <li><strong>4-5:</strong> Post-run ECL adjustment – Post-run data sanity check - Steps 4 through 5</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -112,26 +208,48 @@
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;"></th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Maker</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 160px;">Time</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 320px;">Settings</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 280px;">Settings</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Action</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Status</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Checker</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download Logs</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(item, index) in reviewList" :key="index" :style="{ backgroundColor: item.approved ? '#e8f5e9' : '#fff' }">
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                  <input type="radio" name="review-select" :checked="selectedReviewIndex === index" @change="selectReview(index)" />
+                  <input v-if="item.isGenerateReport" type="radio" name="review-select" :checked="selectedReviewIndex === index" @change="selectReview(index)" />
                 </td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
                 <td style="text-align: left; padding: 16px 18px; border-bottom: 1px solid #e0e0e0; min-width: 260px; font-size: 15px; line-height: 1.7;">
-                  <div class="param-item"><span class="param-label">Parameter:</span> <span class="param-value">{{ item.parameter }}</span></div>
-                  <div class="param-item"><span class="param-label">Adjustment:</span> <span class="param-value">{{ item.adjustment }}</span></div>
-                  <div class="param-item"><span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.reportingDate }}</span></div>
-                  <div class="param-item"><span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span></div>
-                  <div class="param-item"><span class="param-label">Country:</span> <span class="param-value">{{ item.country }}</span></div>
+                  <div v-if="item.isResume" class="param-item">
+                    <span class="param-label">Resumed version:</span> <span class="param-value">{{ item.resumedVersion }}</span>
+                  </div>
+                  <div v-if="item.isResume" class="param-item">
+                    <span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span>
+                  </div>
+                  <div v-if="item.isGenerateReport" class="param-item">
+                    <span class="param-label">Selected version:</span> <span class="param-value">{{ item.resumedVersion }}</span>
+                  </div>
+                  <div v-if="item.isGenerateReport" class="param-item">
+                    <span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span>
+                  </div>
+                  <div v-if="!item.isResume && !item.isGenerateReport" class="param-item">
+                    <span class="param-label">Parameter:</span> <span class="param-value">{{ item.parameter }}</span>
+                  </div>
+                  <div v-if="!item.isResume && !item.isGenerateReport" class="param-item">
+                    <span class="param-label">Adjustment:</span> <span class="param-value">{{ item.adjustment }}</span>
+                  </div>
+                  <div v-if="!item.isResume && !item.isGenerateReport" class="param-item">
+                    <span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.reportingDate }}</span>
+                  </div>
+                  <div v-if="!item.isResume && !item.isGenerateReport" class="param-item">
+                    <span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span>
+                  </div>
+                  <div v-if="!item.isResume && !item.isGenerateReport" class="param-item">
+                    <span class="param-label">Country:</span> <span class="param-value">{{ item.country }}</span>
+                  </div>
                 </td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
@@ -182,12 +300,16 @@ interface ReviewItem {
   approved: boolean
   downloaded: boolean
   taskId?: string // Added taskId to the interface
+  timestamp?: string // Added timestamp to the interface
+  isResume?: boolean // Added isResume flag
+  resumedVersion?: string // Added resumedVersion for resume records
+  isGenerateReport?: boolean // Added isGenerateReport flag
 }
  
 // Replace hardcoded options with dynamic lists
 const parametersOptions = ref<string[]>([])
 const correctionsOptions = ref<string[]>([])
-const runModes = ['4', '6', '9', '12', '15']
+const runModes = ['0','1','2','3','0-5','1-5','2-5','3-5','4-5']
  
 // Country selection
 const countryOptions = ['All', 'Hong Kong', 'Macau', 'Singapore', 'Others']
@@ -201,9 +323,24 @@ const selectedReportingDate = ref('')
 const selectedRunMode = ref('')
 const selectedCountry = ref('')
 const actionComment = ref('')
- 
+
+// Resume run variables
+const selectedResumeConfig = ref('')
+const selectedResumeRunMode = ref('')
+const resumeActionComment = ref('')
+const resumeConfigOptions = ref<string[]>([])
+const resumeRunModes = ['1-5','2-5','3-5','4-5']
+
+// Generate Report variables
+const selectedReportConfig = ref('')
+const selectedReportRunMode = ref('6') // Fixed to 6
+const reportActionComment = ref('')
+const reportConfigOptions = ref<string[]>([])
+
 const step1Complete = ref(false)
 const step2Complete = ref(false)
+const step3Complete = ref(false) // Added step3Complete
+const step4Complete = ref(false) // Added step4Complete
  
 // Review list with localStorage persistence
 const reviewList = ref<ReviewItem[]>([])
@@ -240,11 +377,15 @@ const fetchUploadedFiles = async () => {
  
 const canContinue = computed(() => selectedParameters.value !== '' && selectedCorrections.value !== '' && selectedReportingDate.value !== '')
 const canSubmit = computed(() => step1Complete.value && selectedRunMode.value !== '' && selectedCountry.value !== '' && actionComment.value.trim() !== '')
- 
+const canResumeSubmit = computed(() => selectedResumeConfig.value !== '' && selectedResumeRunMode.value !== '' && resumeActionComment.value.trim() !== '')
+const canGenerateReportSubmit = computed(() => selectedReportConfig.value !== '' && reportActionComment.value.trim() !== '')
+
 // Load data when component mounts
 onMounted(() => {
   fetchReviewListFromDB()
   fetchUploadedFiles() // Fetch uploaded files when component mounts
+  fetchResumeConfigFiles() // Fetch resume config files
+  fetchReportConfigFiles() // Fetch report config files
 })
  
 // Clean up event listener
@@ -258,22 +399,27 @@ async function onSubmit() {
   const now = new Date()
   const pad = (n: number) => n.toString().padStart(2, '0')
   const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+  
+  // Generate UI timestamp in the same format as backend (YYYYMMDDHHMMSS)
+  const uiTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
  
   try {
     showProcessPopup.value = true
     processPopupClosed.value = false
  
-    // 提交任务，获取 task_id
+    // 提交任务，获取 task_id，并传递UI timestamp
     const runResponse = await axios.post('https://10.25.108.72/api/run_ecl_engine', {
       selectedParameters: selectedParameters.value,
       selectedCorrections: selectedCorrections.value,
       reportingDate: selectedReportingDate.value,
       runMode: selectedRunMode.value,
       country: selectedCountry.value,
-      action: actionComment.value
+      action: actionComment.value,
+      ui_timestamp: uiTimestamp
     })
  
     const taskId = runResponse.data.task_id
+    const backendTimestamp = runResponse.data.timestamp || uiTimestamp
  
     // 立即添加到review列表，初始状态为 Running
     reviewList.value.unshift({
@@ -289,7 +435,8 @@ async function onSubmit() {
       checker: 'Waiting',
       approved: false,
       downloaded: false,
-      taskId // 新增字段
+      taskId, // 新增字段
+      timestamp: backendTimestamp // 保存timestamp用于后续查找
     })
 
     // 轮询任务状态
@@ -308,7 +455,7 @@ async function onSubmit() {
           } else if (status === 'failed') {
             item.status = 'Failed'
             showProcessPopup.value = false
-            if (!processPopupClosed.value) alert('ECL Engine failed!')
+            if (!processPopupClosed.value) alert('ECL Engine failed')
             return
           } else {
             item.status = 'Running'
@@ -331,6 +478,13 @@ async function onSubmit() {
     selectedRunMode.value = ''
     selectedCountry.value = ''
     actionComment.value = ''
+    
+    // 重新获取resume config files列表，包含新生成的config file
+    fetchResumeConfigFiles()
+    fetchReportConfigFiles()
+    
+    // Set step2Complete to true to show 100% progress
+    step2Complete.value = true
  
   } catch (error: any) {
     showProcessPopup.value = false
@@ -347,29 +501,91 @@ function selectReview(index: number) {
   selectedReviewIndex.value = index
 }
  
-function downloadRow(index: number) {
+async function downloadRow(index: number) {
   const item = reviewList.value[index]
-  const blob = new Blob([], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  
+  if (!item.taskId) {
+    alert('No task ID found for this record')
+    return
+  }
+  
+  try {
+    // Show loading state
+    item.downloaded = false
+    
+    // Call the backend API to download log files
+    const response = await axios.get(`https://10.25.108.72/api/download_log_files/${item.taskId}`, {
+      responseType: 'blob'
+    })
+    
+    // Create download link
+    const blob = new Blob([response.data], { type: 'application/zip' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'dummy_run_ecl_engine.zip'
+    a.download = `ecl_log_files_${item.timestamp || 'unknown'}.zip`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+    
+    // Update download status
   item.downloaded = true
+    console.log(`Successfully downloaded log files for task: ${item.taskId}`)
+    
+  } catch (error: any) {
+    console.error('Download failed:', error)
+    const errorMessage = error.response?.data?.error || 'Download failed. Please try again.'
+    alert(`Download failed: ${errorMessage}`)
+    item.downloaded = false
+  }
 }
  
 function approveSelected() {
   if (selectedReviewIndex.value === null) return
   const item = reviewList.value[selectedReviewIndex.value]
-  if (item) {
-    item.approved = true
-    item.status = 'Confirmed'
-    item.checker = 'RMGUser_2'
-    // After confirming, navigate to the reporting page
-    router.push('/reporting')
+  if (item && item.isGenerateReport) {
+    // Get the timestamp from the selected record
+    const timestamp = item.timestamp
+    if (timestamp) {
+      // Check if reports are available for this timestamp before navigating
+      checkReportAvailability(timestamp).then(hasReports => {
+        if (hasReports) {
+          // Reports are available, navigate to reporting page
+          item.approved = true
+          item.status = 'Confirmed'
+          item.checker = 'RMGUser_2'
+          router.push({
+            path: '/reporting',
+            query: { 
+              timestamp: timestamp
+            }
+          })
+        } else {
+          // No reports available, show error message
+          alert('No reports available for this record. Please ensure the ECL Engine has completed successfully and generated reports.')
+        }
+      }).catch(error => {
+        console.error('Error checking report availability:', error)
+        alert('Error checking report availability. Please try again.')
+      })
+    } else {
+      // No timestamp available
+      alert('No output folder found for this record.')
+    }
+  } else {
+    alert('Only Generate Report records can be confirmed for reporting.')
+  }
+}
+
+// Add function to check report availability
+async function checkReportAvailability(timestamp: string): Promise<boolean> {
+  try {
+    const response = await axios.get(`https://10.25.108.72/api/check_report_availability/${timestamp}`)
+    return response.data.has_reports
+  } catch (error) {
+    console.error('Error checking report availability:', error)
+    return false
   }
 }
 
@@ -392,11 +608,226 @@ const fetchReviewListFromDB = async () => {
         checker: item.checker,
         approved: false,
         downloaded: false,
-        taskId: settings.task_id || ''
+        taskId: settings.task_id || '',
+        timestamp: settings.timestamp || '',
+        isResume: settings.isResume || false,
+        resumedVersion: settings.resumedVersion || '',
+        isGenerateReport: settings.isGenerateReport || false // Add this line
       }
     })
   } catch (e) {
     console.error('Error fetching ECL engine records:', e)
+  }
+}
+
+// Function to fetch resume config files
+const fetchResumeConfigFiles = async () => {
+  try {
+    const resumeConfigResponse = await axios.get('https://10.25.108.72/api/get_uploaded_files?type=resume_config')
+    resumeConfigOptions.value = resumeConfigResponse.data.files
+    console.log('Resume config files updated:', resumeConfigOptions.value)
+  } catch (error) {
+    console.error('Error fetching resume config files:', error)
+  }
+}
+
+// Function to fetch report config files
+const fetchReportConfigFiles = async () => {
+  try {
+    const reportConfigResponse = await axios.get('https://10.25.108.72/api/get_uploaded_files?type=report_config')
+    reportConfigOptions.value = reportConfigResponse.data.files
+    console.log('Report config files updated:', reportConfigOptions.value)
+  } catch (error) {
+    console.error('Error fetching report config files:', error)
+  }
+}
+
+async function onResumeSubmit() {
+  if (!canResumeSubmit.value) return
+
+  const now = new Date()
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+  const uiTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+
+  try {
+    showProcessPopup.value = true
+    processPopupClosed.value = false
+
+    const resumeResponse = await axios.post('https://10.25.108.72/api/resume_ecl_engine', {
+      selectedResumeConfig: selectedResumeConfig.value,
+      selectedResumeRunMode: selectedResumeRunMode.value,
+      resumeActionComment: resumeActionComment.value,
+      ui_timestamp: uiTimestamp
+    })
+
+    const taskId = resumeResponse.data.task_id
+    const backendTimestamp = resumeResponse.data.timestamp || uiTimestamp
+
+    reviewList.value.unshift({
+      maker: 'RMGUser_1',
+      time: timeStr,
+      parameter: '', // Resume run doesn't have parameters
+      adjustment: '', // Resume run doesn't have adjustments
+      reportingDate: '', // Resume run doesn't have reporting date
+      runMode: selectedResumeRunMode.value,
+      country: '', // Resume run doesn't have country
+      action: resumeActionComment.value,
+      status: 'Running',
+      checker: 'Waiting',
+      approved: false,
+      downloaded: false,
+      taskId,
+      timestamp: backendTimestamp,
+      isResume: true,
+      resumedVersion: selectedResumeConfig.value
+    })
+
+    const pollStatus = async () => {
+      try {
+        const statusResponse = await axios.get(`https://10.25.108.72/api/task_status/${taskId}`)
+        const status = statusResponse.data.status
+        const item = reviewList.value.find(i => i.taskId === taskId)
+        if (item) {
+          if (status === 'completed') {
+            item.status = 'Completed'
+            showProcessPopup.value = false
+            if (!processPopupClosed.value) alert('ECL Engine resumed successfully!')
+            return
+          } else if (status === 'failed') {
+            item.status = 'Failed'
+            showProcessPopup.value = false
+            if (!processPopupClosed.value) alert('ECL Engine failed to resume')
+            return
+          } else {
+            item.status = 'Running'
+          }
+        }
+        setTimeout(pollStatus, 5000)
+      } catch (error: any) {
+        showProcessPopup.value = false
+        if (!processPopupClosed.value) alert(error.message || 'An error occurred while resuming the ECL engine')
+      }
+    }
+    pollStatus()
+
+    // Reset resume form
+    selectedResumeConfig.value = ''
+    selectedResumeRunMode.value = ''
+    resumeActionComment.value = ''
+    step3Complete.value = true
+    
+    // 重新获取resume config files列表
+    fetchResumeConfigFiles()
+    fetchReportConfigFiles()
+    
+    // Reset progress bar after a delay
+    setTimeout(() => {
+      step3Complete.value = false
+    }, 2000)
+  } catch (error: any) {
+    showProcessPopup.value = false
+    if (!processPopupClosed.value) alert(error.message || 'An error occurred while resuming the ECL engine')
+  }
+}
+
+async function onGenerateReportSubmit() {
+  if (!canGenerateReportSubmit.value) return
+
+  const now = new Date()
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+  const uiTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+
+  try {
+    showProcessPopup.value = true
+    processPopupClosed.value = false
+
+    const reportResponse = await axios.post('https://10.25.108.72/api/generate_report', {
+      selectedReportConfig: selectedReportConfig.value,
+      selectedReportRunMode: selectedReportRunMode.value,
+      reportActionComment: reportActionComment.value,
+      ui_timestamp: uiTimestamp
+    })
+
+    const taskId = reportResponse.data.task_id
+    const backendTimestamp = reportResponse.data.timestamp || uiTimestamp
+
+    reviewList.value.unshift({
+      maker: 'RMGUser_1',
+      time: timeStr,
+      parameter: '', // Report generation doesn't have parameters
+      adjustment: '', // Report generation doesn't have adjustments
+      reportingDate: '', // Report generation doesn't have reporting date
+      runMode: selectedReportRunMode.value,
+      country: '', // Report generation doesn't have country
+      action: reportActionComment.value,
+      status: 'Running',
+      checker: 'Waiting',
+      approved: false,
+      downloaded: false,
+      taskId,
+      timestamp: backendTimestamp,
+      isResume: false, // It's a report generation task
+      resumedVersion: selectedReportConfig.value,
+      isGenerateReport: true // Set this flag for report generation
+    })
+
+    const pollStatus = async () => {
+      try {
+        const statusResponse = await axios.get(`https://10.25.108.72/api/task_status/${taskId}`)
+        const status = statusResponse.data.status
+        const item = reviewList.value.find(i => i.taskId === taskId)
+        if (item) {
+          if (status === 'completed') {
+            item.status = 'Completed'
+            showProcessPopup.value = false
+            if (!processPopupClosed.value) alert('Report generation completed successfully!')
+            return
+          } else if (status === 'failed') {
+            item.status = 'Failed'
+            showProcessPopup.value = false
+            if (!processPopupClosed.value) alert('Report generation failed')
+            return
+          } else {
+            item.status = 'Running'
+          }
+        }
+        setTimeout(pollStatus, 5000)
+      } catch (error: any) {
+        showProcessPopup.value = false
+        if (!processPopupClosed.value) alert(error.message || 'An error occurred while generating the report')
+      }
+    }
+    pollStatus()
+
+    // Reset report form
+    selectedReportConfig.value = ''
+    selectedReportRunMode.value = ''
+    reportActionComment.value = ''
+    step4Complete.value = true
+    
+    // 重新获取report config files列表
+    fetchReportConfigFiles()
+    
+    // Reset progress bar after a delay
+    setTimeout(() => {
+      step4Complete.value = false
+    }, 2000)
+  } catch (error: any) {
+    showProcessPopup.value = false
+    if (!processPopupClosed.value) alert(error.message || 'An error occurred while generating the report')
+  }
+}
+
+// New function to get progress width
+function getProgressWidth() {
+  if (step1Complete.value && step2Complete.value) {
+    return '100%'
+  } else if (step1Complete.value) {
+    return '50%'
+  } else {
+    return '0%'
   }
 }
 </script>
@@ -448,6 +879,7 @@ const fetchReviewListFromDB = async () => {
   display: flex;
   justify-content: space-between;
   gap: 30px;
+  margin-bottom: 30px;
 }
 .step-box {
   flex: 1;
@@ -585,6 +1017,20 @@ const fetchReviewListFromDB = async () => {
 }
 .step-btn {
   margin-left: 0;
+}
+
+.fixed-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 15px;
+  background-color: #f5f5f5;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  font-weight: 500;
 }
  
 .process-popup {
