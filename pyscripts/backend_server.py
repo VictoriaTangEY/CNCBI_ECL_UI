@@ -2421,13 +2421,37 @@ def validate_ad_user_id(user_id):
             # User found
             user_entry = conn.entries[0]
             logger.info(f"User {user_id} found in AD")
+            
+            # Safely extract attributes from LDAP entry
+            display_name = ''
+            email = ''
+            upn = ''
+            
+            try:
+                if hasattr(user_entry, 'displayName') and user_entry.displayName:
+                    display_name = str(user_entry.displayName.value)
+            except:
+                pass
+                
+            try:
+                if hasattr(user_entry, 'mail') and user_entry.mail:
+                    email = str(user_entry.mail.value)
+            except:
+                pass
+                
+            try:
+                if hasattr(user_entry, 'userPrincipalName') and user_entry.userPrincipalName:
+                    upn = str(user_entry.userPrincipalName.value)
+            except:
+                pass
+            
             return {
                 "status": "success", 
                 "message": f"User ID {user_id} exists in Active Directory",
                 "user_id": user_id,
-                "display_name": str(user_entry.get('displayName', '')),
-                "email": str(user_entry.get('mail', '')),
-                "upn": str(user_entry.get('userPrincipalName', ''))
+                "display_name": display_name,
+                "email": email,
+                "upn": upn
             }
         else:
             logger.warning(f"User {user_id} not found in AD")

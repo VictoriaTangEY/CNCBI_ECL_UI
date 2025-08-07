@@ -637,18 +637,19 @@ async function validateAndAddUser() {
     if (response.ok && result.status === 'success') {
       // User exists in AD, create new ECL user record
       const newUser = {
-        userName: result.display_name || newUserForm.value.userId,
-        loginName: newUserForm.value.userId,
-        defaultRole: 'Unassigned',
-        updatedBy: 'Admin',
+        user_name: result.display_name || newUserForm.value.userId,
+        login_name: newUserForm.value.userId,
+        default_role: 'Unassigned',
+        updated_by: 'Admin',
         time: new Date().toISOString(),
         email: result.email || '',
-        mobileNo: '',
-        phoneNo: '',
+        mobile_no: '',
+        phone_no: '',
         remark: ''
       }
       
       // Save to database
+      console.log('Sending user data to backend:', newUser)
       const saveResponse = await axios.post('https://10.25.108.72/api/save_user_record', newUser)
       if (saveResponse.data.status === 'success') {
         await loadUserRecords() // Reload data
