@@ -45,6 +45,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import axios from 'axios'
 
 const currentTab = ref('admin')
 
@@ -53,25 +54,29 @@ const adminCards = [
     title: 'User & Role Updates',
     description: 'User and role modification history',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'user_role_updates'
   },
   {
     title: 'User Access',
     description: 'Login/logout activity records',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'user_access'
   },
   {
     title: 'Download Activity',
     description: 'File download history',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'download_activity'
   },
   {
     title: 'All Admin Logs',
     description: 'Complete admin activity bundle',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'all_admin_logs'
   }
 ]
 
@@ -80,32 +85,63 @@ const systemCards = [
     title: 'ECL Job Execution',
     description: 'Batch job execution history',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'ecl_job_execution'
   },
   {
     title: 'ECL Result Confirmation',
     description: 'Result approval records',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'ecl_result_confirmation'
   },
   {
     title: 'Parameter Updates',
     description: 'System parameter change history',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'parameter_updates'
   },
   {
     title: 'Data Sanity Reports',
     description: 'Data quality check results',
     formats: ['LOG'],
-    buttonText: 'Download'
+    buttonText: 'Download',
+    logType: 'data_sanity_reports'
   }
 ]
 
 const currentCards = computed(() => currentTab.value === 'admin' ? adminCards : systemCards)
 
-function download(reportTitle, format) {
-  console.log(`Download ${reportTitle} as .log`)
+async function download(reportTitle, format) {
+  try {
+    // Find the card that matches the report title
+    const card = currentCards.value.find(c => c.title === reportTitle)
+    if (!card || !card.logType) {
+      console.error('Log type not found for:', reportTitle)
+      return
+    }
+
+    // Call the backend API to download the audit log
+    const response = await axios.get(`http://127.0.0.1:5010/download_audit_log/${card.logType}`, {
+      responseType: 'blob'
+    })
+
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${card.logType}.txt`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+
+    console.log(`Downloaded ${reportTitle} as .txt`)
+  } catch (error) {
+    console.error('Download failed:', error)
+    alert('Download failed. Please try again.')
+  }
 }
 </script>
 

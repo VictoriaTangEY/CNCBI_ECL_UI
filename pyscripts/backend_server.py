@@ -611,6 +611,11 @@ def save_user_record(user_name, login_name, default_role, updated_by, time, emai
         """, (user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark))
         conn.close()
         logger.info(f"Successfully saved user record: {user_name}")
+        
+        # Log audit trail
+        details = f"Added new user: {user_name} with role: {default_role}"
+        log_user_role_update("Add New User", updated_by, "Role Management", details)
+        
         return True
     except Exception as e:
         logger.error(f"Error saving user record: {str(e)}")
@@ -658,6 +663,11 @@ def update_user_record(user_id, user_name, default_role, email, mobile_no, phone
         """, (user_name, default_role, email, mobile_no, phone_no, remark, updated_by, user_id))
         conn.close()
         logger.info(f"Successfully updated user record: {user_name}")
+        
+        # Log audit trail
+        details = f"Updated user: {user_name} with role: {default_role}"
+        log_user_role_update("Edit User", updated_by, "Role Management", details)
+        
         return True
     except Exception as e:
         logger.error(f"Error updating user record: {str(e)}")
@@ -691,6 +701,11 @@ def save_role_record(role_name, status, updated_by, time):
         
         conn.close()
         logger.info(f"Successfully saved role record: {role_name}")
+        
+        # Log audit trail
+        details = f"Added new role: {role_name} with status: {status}"
+        log_user_role_update("Add New Role", updated_by, "Role Management", details)
+        
         return True
     except Exception as e:
         logger.error(f"Error saving role record: {str(e)}")
@@ -736,6 +751,11 @@ def update_role_record(role_id, role_name, status, updated_by):
         """, (role_name, status, updated_by, role_id))
         conn.close()
         logger.info(f"Successfully updated role record: {role_name}")
+        
+        # Log audit trail
+        details = f"Updated role: {role_name} with status: {status}"
+        log_user_role_update("Edit Role", updated_by, "Role Management", details)
+        
         return True
     except Exception as e:
         logger.error(f"Error updating role record: {str(e)}")
@@ -754,6 +774,11 @@ def save_function_record(function_name, status, updated_by, time):
         """, (function_name, status, updated_by, time))
         conn.close()
         logger.info(f"Successfully saved function record: {function_name}")
+        
+        # Log audit trail
+        details = f"Added new function: {function_name} with status: {status}"
+        log_user_role_update("Add New Function", updated_by, "Role Management", details)
+        
         return True
     except Exception as e:
         logger.error(f"Error saving function record: {str(e)}")
@@ -796,6 +821,11 @@ def update_function_record(function_id, function_name, status, updated_by):
         """, (function_name, status, updated_by, function_id))
         conn.close()
         logger.info(f"Successfully updated function record: {function_name}")
+        
+        # Log audit trail
+        details = f"Updated function: {function_name} with status: {status}"
+        log_user_role_update("Edit Function", updated_by, "Role Management", details)
+        
         return True
     except Exception as e:
         logger.error(f"Error updating function record: {str(e)}")
@@ -862,6 +892,11 @@ def update_role_function_record(role_name, function_name, status, updated_by):
         """, (status, updated_by, function_name))
         conn.close()
         logger.info(f"Successfully updated role-function record: {role_name} - {function_name}")
+        
+        # Log audit trail
+        details = f"Updated role-function mapping: {role_name} - {function_name} with status: {status}"
+        log_user_role_update("Edit Role-Function", updated_by, "Role Management", details)
+        
         return True
     except Exception as e:
         logger.error(f"Error updating role-function record: {str(e)}")
@@ -934,6 +969,10 @@ def upload_file():
                     suffix=user_suffix,
                     file_path=new_upload_folder
                 )
+                
+                # Log parameter update
+                log_parameter_update("Default", "Upload", file_type, new_upload_folder)
+                
                 return jsonify({
                     'message': f'Zip file extracted. Files: {extracted_files}',
                     'path': new_upload_folder,
@@ -958,6 +997,10 @@ def upload_file():
                     suffix=user_suffix,
                     file_path=new_upload_folder
                 )
+                
+                # Log parameter update
+                log_parameter_update("Default", "Upload", file_type, new_upload_folder)
+                
                 return jsonify({
                     'message': f'File "{new_filename}" uploaded successfully',
                     'path': file_path,
@@ -992,9 +1035,9 @@ def update_approval_status():
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
         
-        # First, get the file_path for this record
+        # First, get the file_path and type for this record
         cursor.execute(f"""
-            SELECT file_path FROM [{DB_NAME}].[dbo].[UI_Parameter_records] WHERE id = ?
+            SELECT file_path, type FROM [{DB_NAME}].[dbo].[UI_Parameter_records] WHERE id = ?
         """, (record_id,))
         result = cursor.fetchone()
         
@@ -1003,6 +1046,7 @@ def update_approval_status():
             return jsonify({'error': 'File path not found for this record'}), 404
         
         file_path = result[0]
+        file_type = result[1] if result[1] else 'unknown'
         
         # Update the status in database
         cursor.execute(f"""
@@ -1014,6 +1058,9 @@ def update_approval_status():
         
         # If the status is being changed to 'Approved', copy the folder to approved directory
         if new_status == 'Approved':
+            # Log parameter approval
+            log_parameter_update("Default", "Approve", file_type, file_path)
+            
             copy_result = copy_folder_to_approved(file_path)
             if copy_result['status'] == 'success':
                 logger.info(f"Record {record_id} approved and folder copied to approved directory")
@@ -1084,6 +1131,11 @@ def download_files(record_id):
         # Check if directory exists
         if not os.path.exists(file_path):
             return jsonify({'error': 'File directory not found'}), 404
+        
+        # Log download activity
+        folder_name = os.path.basename(file_path)
+        log_download_activity("Default", "Parameter", f"Parameter files from {folder_name}")
+        
         # Create zip file with all files in the directory
         import zipfile
         from io import BytesIO
@@ -1681,6 +1733,9 @@ def download_log_files(task_id):
         if not log_folder_path:
             return jsonify({'error': f'Log folder not found for timestamp: {timestamp}'}), 404
         
+        # Log download activity
+        log_download_activity("Default", "Run Management", f"ECL log files for {timestamp}")
+        
         # Create a zip file of the log folder
         from io import BytesIO
         import zipfile
@@ -1834,6 +1889,11 @@ def download_ecl_monthly_report():
     try:
         # Get report_base_path from request args
         report_base_path = request.args.get('report_base_path')
+        
+        # Log download activity
+        file_path = f"ECL Monthly Report from {report_base_path}" if report_base_path else "ECL Monthly Report"
+        log_download_activity("Default", "Reporting", file_path)
+        
         return download_single_report('ecl_monthly', report_base_path)
     except Exception as e:
         logger.error(f"Error in download_ecl_monthly_report: {str(e)}")
@@ -1845,6 +1905,11 @@ def download_ecl_summary_report():
     try:
         # Get report_base_path from request args
         report_base_path = request.args.get('report_base_path')
+        
+        # Log download activity
+        file_path = f"ECL Summary Report from {report_base_path}" if report_base_path else "ECL Summary Report"
+        log_download_activity("Default", "Reporting", file_path)
+        
         return download_single_report('ecl_summary', report_base_path)
     except Exception as e:
         logger.error(f"Error in download_ecl_summary_report: {str(e)}")
@@ -1856,6 +1921,11 @@ def download_bu_excel_reports():
     try:
         # Get report_base_path from request args
         report_base_path = request.args.get('report_base_path')
+        
+        # Log download activity
+        file_path = f"BU Excel Reports from {report_base_path}" if report_base_path else "BU Excel Reports"
+        log_download_activity("Default", "Reporting", file_path)
+        
         return download_bu_reports(report_base_path)
     except Exception as e:
         logger.error(f"Error in download_bu_excel_reports: {str(e)}")
@@ -2153,6 +2223,163 @@ def api_update_role_function_record():
     except Exception as e:
         logger.error(f"Error in api_update_role_function_record: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+############################################################################ Audit Trail
+def create_audit_trial_folder():
+    """Create the AuditTrial folder if it doesn't exist"""
+    try:
+        audit_folder = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial'
+        os.makedirs(audit_folder, exist_ok=True)
+        logger.info(f"AuditTrial folder created/verified: {audit_folder}")
+        return True
+    except Exception as e:
+        logger.error(f"Error creating AuditTrial folder: {str(e)}")
+        return False
+
+def log_user_role_update(operation, user_name, page="Role Management", details=""):
+    """Log user and role updates to the audit trail"""
+    try:
+        create_audit_trial_folder()
+        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_role_updates_log.txt'
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        log_entry = f"[{current_time}] User: {user_name} | Page: {page} | Operation: {operation} | Details: {details}\n"
+        
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+        
+        logger.info(f"Audit log entry added: {operation} by {user_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error logging user role update: {str(e)}")
+        return False
+
+def log_download_activity(user_name, page, file_path):
+    """Log download activities to the audit trail"""
+    try:
+        create_audit_trial_folder()
+        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/download_log.txt'
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        log_entry = f"[{current_time}] User: {user_name} | Page: {page} | Download File: {file_path}\n"
+        
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+        
+        logger.info(f"Download activity logged: {page} by {user_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error logging download activity: {str(e)}")
+        return False
+
+def log_ecl_result_confirmation(user_name, timestamp, settings):
+    """Log ECL result confirmation to the audit trail"""
+    try:
+        create_audit_trial_folder()
+        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/ecl_result_confirmation_log.txt'
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        log_entry = f"[{current_time}] User: {user_name} | Page: Run Management | Operation: Approve Record | Timestamp: {timestamp} | Settings: {settings}\n"
+        
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+        
+        logger.info(f"ECL result confirmation logged: {timestamp} by {user_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error logging ECL result confirmation: {str(e)}")
+        return False
+
+def log_parameter_update(user_name, operation_type, file_type, file_path):
+    """Log parameter updates to the audit trail"""
+    try:
+        create_audit_trial_folder()
+        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/parameter_update_log.txt'
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        log_entry = f"[{current_time}] User: {user_name} | Page: Parameter | Operation: {operation_type} | Type: {file_type} | File Path: {file_path}\n"
+        
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+        
+        logger.info(f"Parameter update logged: {operation_type} {file_type} by {user_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error logging parameter update: {str(e)}")
+        return False
+
+@app.route('/download_audit_log/<log_type>', methods=['GET'])
+def download_audit_log(log_type):
+    """Download audit log files"""
+    try:
+        create_audit_trial_folder()
+        
+        if log_type == 'user_role_updates':
+            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_role_updates_log.txt'
+            filename = 'user_role_updates_log.txt'
+        elif log_type == 'download_activity':
+            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/download_log.txt'
+            filename = 'download_log.txt'
+        elif log_type == 'ecl_result_confirmation':
+            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/ecl_result_confirmation_log.txt'
+            filename = 'ecl_result_confirmation_log.txt'
+        elif log_type == 'parameter_updates':
+            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/parameter_update_log.txt'
+            filename = 'parameter_update_log.txt'
+        else:
+            return jsonify({'error': 'Invalid log type'}), 400
+        
+        if not os.path.exists(log_file):
+            # Create empty file if it doesn't exist
+            with open(log_file, 'w', encoding='utf-8') as f:
+                f.write(f"Audit Log - {log_type.replace('_', ' ').title()}\n")
+                f.write(f"Created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 50 + "\n\n")
+        
+        return send_file(log_file, as_attachment=True, download_name=filename)
+    except Exception as e:
+        logger.error(f"Error downloading audit log {log_type}: {str(e)}")
+        return jsonify({'error': f'Error downloading log: {str(e)}'}), 500
+
+@app.route('/confirm_ecl_result', methods=['POST'])
+def confirm_ecl_result():
+    """Confirm ECL result and log the confirmation"""
+    try:
+        data = request.get_json()
+        task_id = data.get('task_id')
+        timestamp = data.get('timestamp')
+        
+        if not task_id or not timestamp:
+            return jsonify({'error': 'Missing task_id or timestamp'}), 400
+        
+        # Get the settings from database
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT settings FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE JSON_VALUE(settings, '$.task_id') = ?
+        """, (task_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({'error': 'Record not found'}), 404
+        
+        settings = row[0] if row[0] else '{}'
+        
+        # Log ECL result confirmation
+        log_ecl_result_confirmation("Default", timestamp, settings)
+        
+        return jsonify({
+            'message': 'ECL result confirmed successfully',
+            'task_id': task_id,
+            'timestamp': timestamp
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error confirming ECL result: {str(e)}")
+        return jsonify({'error': f'Error confirming ECL result: {str(e)}'}), 500
 
 
 ############################################################################ AD Validation

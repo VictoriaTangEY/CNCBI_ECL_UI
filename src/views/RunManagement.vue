@@ -541,7 +541,7 @@ async function downloadRow(index: number) {
   }
 }
  
-function approveSelected() {
+async function approveSelected() {
   if (selectedReviewIndex.value === null) return
   const item = reviewList.value[selectedReviewIndex.value]
   if (item && item.isGenerateReport) {
@@ -549,18 +549,29 @@ function approveSelected() {
     const timestamp = item.timestamp
     if (timestamp) {
       // Check if reports are available for this timestamp before navigating
-      checkReportAvailability(timestamp).then(hasReports => {
+      checkReportAvailability(timestamp).then(async hasReports => {
         if (hasReports) {
-          // Reports are available, navigate to reporting page
-          item.approved = true
-          item.status = 'Confirmed'
-          item.checker = 'RMGUser_2'
-          router.push({
-            path: '/reporting',
-            query: { 
+          // Confirm ECL result and log the confirmation
+          try {
+            await axios.post('https://10.25.108.72/api/confirm_ecl_result', {
+              task_id: item.taskId,
               timestamp: timestamp
-            }
-          })
+            })
+            
+            // Reports are available, navigate to reporting page
+            item.approved = true
+            item.status = 'Confirmed'
+            item.checker = 'RMGUser_2'
+            router.push({
+              path: '/reporting',
+              query: { 
+                timestamp: timestamp
+              }
+            })
+          } catch (error) {
+            console.error('Error confirming ECL result:', error)
+            alert('Error confirming ECL result. Please try again.')
+          }
         } else {
           // No reports available, show error message
           alert('No reports available for this record. Please ensure the ECL Engine has completed successfully and generated reports.')
