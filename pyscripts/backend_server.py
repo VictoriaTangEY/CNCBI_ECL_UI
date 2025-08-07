@@ -17,7 +17,7 @@ import pyodbc
 import sys
 from pathlib import Path
 import json
-from ldap3 import Server, Connection, ALL, NTLM
+from ldap3 import Server, Connection, ALL, NTLM, SIMPLE
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
@@ -1478,53 +1478,73 @@ def check_report_availability_for_timestamp(timestamp):
 
 
 ############################################################################ AD Validation
-# LDAP Configuration (Update these with your AD details)
+# LDAP Configuration
 LDAP_SERVER = 'ldap://10.30.244.12:389'
 LDAP_BIND_DN = 'CN=svreclappmgr, OU=Service Accounts,OU=Tier1,OU=Admin,OU=HKG,DC=hkg,DC=ho,DC=cncb2'
-LDAP_BIND_PASSWORD = 'Cncbi@567890'
+LDAP_BIND_PASSWORD = 'Cncbi@67890'
 LDAP_SEARCH_BASE = 'OU=User Accounts,OU=HKG,DC=hkg,DC=ho,DC=cncb2'
 
 def validate_ad_user_id(user_id):
+    """Validate AD user ID against Active Directory"""
+    logger.info(f"Validating user ID: {user_id}")
+    
     try:
-        # Initialize LDAP server
-        server = Server(LDAP_SERVER, get_info=ALL)
+        # Create LDAP server connection
+        server = Server(LDAP_SERVER, get_info=ALL, connect_timeout=10)
         
-        # Connect to LDAP server using service account
-        conn = Connection(server, user=LDAP_BIND_DN, password=LDAP_BIND_PASSWORD, authentication=NTLM)
+        # Connect using SIMPLE authentication
+        conn = Connection(
+            server, 
+            user=LDAP_BIND_DN, 
+            password=LDAP_BIND_PASSWORD, 
+            authentication="SIMPLE",
+            auto_bind=True
+        )
         
-        if not conn.bind():
-            return {"status": "error", "message": "Failed to connect to LDAP server"}
-        
-        # Search for user by sAMAccountName
+        # Search for user
         search_filter = f'(sAMAccountName={user_id})'
+        logger.info(f"Searching for user with filter: {search_filter}")
+        
         conn.search(
             search_base=LDAP_SEARCH_BASE,
             search_filter=search_filter,
-            attributes=['sAMAccountName', 'displayName', 'mail']
+            attributes=['sAMAccountName', 'displayName', 'mail', 'userPrincipalName'],
+            search_scope='SUBTREE'
         )
         
         if conn.entries:
-            # User found, return user details
+            # User found
             user_entry = conn.entries[0]
+            logger.info(f"User {user_id} found in AD")
             return {
                 "status": "success", 
                 "message": f"User ID {user_id} exists in Active Directory",
                 "user_id": user_id,
                 "display_name": str(user_entry.get('displayName', '')),
-                "email": str(user_entry.get('mail', ''))
+                "email": str(user_entry.get('mail', '')),
+                "upn": str(user_entry.get('userPrincipalName', ''))
             }
         else:
-            return {"status": "error", "message": f"User ID {user_id} not found"}
+            logger.warning(f"User {user_id} not found in AD")
+            return {
+                "status": "error", 
+                "message": f"User ID {user_id} not found"
+            }
             
     except Exception as e:
-        return {"status": "error", "message": f"LDAP error: {str(e)}"}
+        error_msg = f"LDAP search error: {str(e)}"
+        logger.error(f"{error_msg}")
+        return {
+            "status": "error", 
+            "message": error_msg
+        }
     finally:
         if 'conn' in locals():
             conn.unbind()
 
 @app.route('/validate-ad-user', methods=['POST'])
 def validate_user():
-    # Expect JSON payload with user_id
+    """Validate user against Active Directory"""
     data = request.get_json()
     
     if not data or 'user_id' not in data:
@@ -1545,4 +1565,7 @@ if __name__ == '__main__':
     else:
         logger.error("Database connection failed")
     logger.info("Starting Flask server on port 5010...")
-    app.run(debug=True, port=5010)
+    # Only run directly if not using gunicorn
+    import sys
+    if 'gunicorn' not in sys.modules:
+        app.run(debug=True, port=5010)

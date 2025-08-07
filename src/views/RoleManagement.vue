@@ -4,7 +4,8 @@
     <aside style="width: 280px; background-color: #f5f5f5; padding: 30px 20px;">
       <h3 style="font-weight: bold; font-size: 22px; margin-bottom: 24px;">Role Management</h3>
       <ul style="list-style: none; padding-left: 0;">
-        <li @click="currentTab = 'maintenance'" :style="{ cursor: 'pointer', color: currentTab === 'maintenance' ? '#ff612c' : '#333', fontWeight: currentTab === 'maintenance' ? '600' : 'normal', marginBottom: '10px', fontSize: '20px' }">▸ Role Maintenance</li>
+        <li @click="currentTab = 'user'" :style="{ cursor: 'pointer', color: currentTab === 'user' ? '#ff612c' : '#333', fontWeight: currentTab === 'user' ? '600' : 'normal', marginBottom: '10px', fontSize: '20px' }">▸ User Maintenance</li>
+        <li @click="currentTab = 'role'" :style="{ cursor: 'pointer', color: currentTab === 'role' ? '#ff612c' : '#333', fontWeight: currentTab === 'role' ? '600' : 'normal', marginBottom: '10px', fontSize: '20px' }">▸ Role Maintenance</li>
         <li @click="currentTab = 'function'" :style="{ cursor: 'pointer', color: currentTab === 'function' ? '#ff612c' : '#333', fontWeight: currentTab === 'function' ? '600' : 'normal', marginBottom: '10px', fontSize: '20px' }">▸ Function Maintenance</li>
         <li @click="currentTab = 'assignment'" :style="{ cursor: 'pointer', color: currentTab === 'assignment' ? '#ff612c' : '#333', fontWeight: currentTab === 'assignment' ? '600' : 'normal', fontSize: '20px' }">▸ Role-Function Maintenance</li>
       </ul>
@@ -18,12 +19,66 @@
         <ol class="breadcrumb-list">
           <li><svg style="width:16px; height:16px; fill:#666; vertical-align:middle;" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg> Home</li>
           <li>Role Management</li>
-          <li>{{ currentTab === 'maintenance' ? 'Role Maintenance' : currentTab === 'function' ? 'Function Maintenance' : 'Role-Function Maintenance' }}</li>
+          <li>{{ currentTab === 'user' ? 'User Maintenance' : currentTab === 'role' ? 'Role Maintenance' : currentTab === 'function' ? 'Function Maintenance' : 'Role-Function Maintenance' }}</li>
         </ol>
       </nav>
 
+      <!-- User Maintenance -->
+      <div class="config-outer-box" v-if="currentTab === 'user'">
+        <div class="config-inner-box">
+          <h2 class="upload-title">User Maintenance</h2>
+          
+          <!-- Query Section -->
+          <div style="background: #f7f7f7; padding: 15px; margin-bottom: 20px; border-radius: 6px;">
+            <div style="display: flex; gap: 15px; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-weight: 600; min-width: 80px;">User:</label>
+                <input v-model="userQuery.user" placeholder="Enter user name" class="select-input-full" style="width: 200px;" />
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <label style="font-weight: 600; min-width: 100px;">LoginName:</label>
+                <input v-model="userQuery.loginName" placeholder="Enter login name" class="select-input-full" style="width: 200px;" />
+              </div>
+              <button class="step-btn" @click="queryUsers" style="background: #ff612c; color: white;">Query</button>
+            </div>
+          </div>
+
+          <!-- Users Table -->
+          <table style="width: 100%; border-collapse: collapse; background: white; border: 1px solid #e0e0e0;">
+            <thead style="background: #f7f7f7;">
+              <tr>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Operation</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">User</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">LoginName</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Default Role</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">UpdatedBy</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(user, index) in filteredUsers" :key="index">
+                <td style="padding: 12px; text-align: center;">
+                  <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="step-btn" @click="viewUser(user)" style="background: #007bff; color: white; padding: 6px 12px; font-size: 12px;">View</button>
+                    <button class="step-btn" @click="updateUser(user)" style="background: #28a745; color: white; padding: 6px 12px; font-size: 12px;">Update</button>
+                  </div>
+                </td>
+                <td style="padding: 12px; text-align: center; color: #007bff; cursor: pointer;">{{ user.userName }}</td>
+                <td style="padding: 12px; text-align: center;">{{ user.loginName }}</td>
+                <td style="padding: 12px; text-align: center;">{{ user.defaultRole }}</td>
+                <td style="padding: 12px; text-align: center;">{{ user.updatedBy }}</td>
+                <td style="padding: 12px; text-align: center;">{{ formatDate(user.time) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style="margin-top: 15px; text-align: right;" v-if="currentTab === 'user'">
+        <button class="upload-button" @click="showAddUserModal = true">Add New User</button>
+      </div>
+
       <!-- Configuration Box with Progress Bar -->
-      <div class="config-outer-box" v-if="currentTab === 'maintenance'">
+      <div class="config-outer-box" v-if="currentTab === 'role'">
         <div class="config-inner-box">
           <h2 class="upload-title">Role Maintenance</h2>
           <table style="width: 100%; border-collapse: collapse; background: white; border: 1px solid #e0e0e0;">
@@ -71,7 +126,7 @@
           </table>
         </div>
       </div>
-      <div style="margin-top: 15px; text-align: right;" v-if="currentTab === 'maintenance'">
+      <div style="margin-top: 15px; text-align: right;" v-if="currentTab === 'role'">
         <button class="upload-button" @click="addNewRoleRow">Add New Role</button>
       </div>
       <!-- Function Maintenance Table -->
@@ -203,6 +258,134 @@
           </div>
         </div>
       </div>
+
+      <!-- Add New User Modal -->
+      <div v-if="showAddUserModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div style="background: white; padding: 20px; width: 400px; border-radius: 10px;">
+          <h3>Add New User</h3>
+          <div style="margin-top: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 600;">User ID:</label>
+            <input v-model="newUserForm.userId" placeholder="Enter User ID" class="select-input-full" />
+            <div style="margin-top: 10px; color: #666; font-size: 12px;">
+              Enter the Active Directory User ID to validate and create new user
+            </div>
+          </div>
+          <div style="margin-top: 15px; text-align: right;">
+            <button class="step-btn" @click="validateAndAddUser" style="background: #ff612c; color: white;">Validate & Add</button>
+            <button class="step-btn" @click="closeAddUserModal">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Update User Modal -->
+      <div v-if="showUpdateUserModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div style="background: white; padding: 20px; width: 500px; border-radius: 10px; max-height: 80vh; overflow-y: auto;">
+          <h3>Update User</h3>
+          <div style="margin-top: 15px;">
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">User:</label>
+                <input v-model="updateUserForm.userName" placeholder="User Name" class="select-input-full" />
+              </div>
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">LoginName:</label>
+                <input v-model="updateUserForm.loginName" placeholder="Login Name" class="select-input-full" disabled />
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Role:</label>
+              <div style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+                <div v-for="role in roles" :key="role.roleId" style="margin-bottom: 8px;">
+                  <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input 
+                      type="radio" 
+                      :value="role.roleName" 
+                      v-model="updateUserForm.defaultRole"
+                      style="margin-right: 8px;"
+                    />
+                    {{ role.roleName }}
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Email:</label>
+              <input v-model="updateUserForm.email" placeholder="Email" class="select-input-full" />
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Mobile No.:</label>
+                <input v-model="updateUserForm.mobileNo" placeholder="Mobile Number" class="select-input-full" />
+              </div>
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Phone No.:</label>
+                <input v-model="updateUserForm.phoneNo" placeholder="Phone Number" class="select-input-full" />
+              </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Remark:</label>
+              <textarea v-model="updateUserForm.remark" placeholder="Remark" class="select-input-full" style="min-height: 80px; resize: vertical;"></textarea>
+            </div>
+          </div>
+          <div style="margin-top: 15px; text-align: right;">
+            <button class="step-btn" @click="saveUserUpdate" style="background: #ff612c; color: white;">Submit</button>
+            <button class="step-btn" @click="closeUpdateUserModal">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- View User Modal -->
+      <div v-if="showViewUserModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div style="background: white; padding: 20px; width: 500px; border-radius: 10px;">
+          <h3>View User Details</h3>
+          <div style="margin-top: 15px;">
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">User:</label>
+                <div style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">{{ viewUserForm.userName }}</div>
+              </div>
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">LoginName:</label>
+                <div style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">{{ viewUserForm.loginName }}</div>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Default Role:</label>
+              <div style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">{{ viewUserForm.defaultRole }}</div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Email:</label>
+              <div style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">{{ viewUserForm.email || '-' }}</div>
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Mobile No.:</label>
+                <div style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">{{ viewUserForm.mobileNo || '-' }}</div>
+              </div>
+              <div style="flex: 1;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Phone No.:</label>
+                <div style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">{{ viewUserForm.phoneNo || '-' }}</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; margin-bottom: 5px; font-weight: 600;">Remark:</label>
+              <div style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; min-height: 60px;">{{ viewUserForm.remark || '-' }}</div>
+            </div>
+          </div>
+          <div style="margin-top: 15px; text-align: right;">
+            <button class="step-btn" @click="closeViewUserModal">Close</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Edit Function Modal for Function Maintenance -->
       <div v-if="showEditFunctionModal && currentTab === 'function'" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000;">
         <div style="background: white; padding: 20px; width: 350px; border-radius: 10px;">
@@ -246,13 +429,101 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-const currentTab = ref('maintenance')
+const currentTab = ref('user')
 const showRoleModal = ref(false)
 const isEditing = ref(false)
 const showAddRow = ref(false)
 const newRole = ref({ roleName: '', roleId: '', status: 'Active' })
 const roleForm = ref({ roleName: '', roleId: '', status: 'Active', remark: '' })
 const originalRoleId = ref('')
+
+// User Management Variables
+const userQuery = ref({ user: '', loginName: '' })
+const filteredUsers = ref<any[]>([])
+const showAddUserModal = ref(false)
+const showUpdateUserModal = ref(false)
+const showViewUserModal = ref(false)
+const newUserForm = ref({ userId: '' })
+const updateUserForm = ref({
+  userName: '',
+  loginName: '',
+  defaultRole: '',
+  email: '',
+  mobileNo: '',
+  phoneNo: '',
+  remark: ''
+})
+const viewUserForm = ref({
+  userName: '',
+  loginName: '',
+  defaultRole: '',
+  email: '',
+  mobileNo: '',
+  phoneNo: '',
+  remark: ''
+})
+
+// Sample user data
+const users = ref([
+  { 
+    userName: 'Init User', 
+    loginName: 'admin', 
+    defaultRole: 'System', 
+    updatedBy: 'Init User', 
+    time: '2025-05-27 00:00:00',
+    email: 'admin@cncb.com',
+    mobileNo: '',
+    phoneNo: '',
+    remark: ''
+  },
+  { 
+    userName: 'Francis KT Chan', 
+    loginName: 'francisktchan', 
+    defaultRole: 'SQ_Admin', 
+    updatedBy: 'Init User', 
+    time: '2024-04-25 14:27:59',
+    email: 'francis.chan@cncb.com',
+    mobileNo: '852-12345678',
+    phoneNo: '852-87654321',
+    remark: 'Senior Admin'
+  },
+  { 
+    userName: 'Amy LS Tse cmsreviewer45', 
+    loginName: 'cmsreviewer45', 
+    defaultRole: 'Reviewer', 
+    updatedBy: 'Init User', 
+    time: '2016-09-08 16:40:49',
+    email: 'amy.tse@cncb.com',
+    mobileNo: '852-23456789',
+    phoneNo: '',
+    remark: 'Reviewer role'
+  },
+  { 
+    userName: 'Amy LS Tse cmsreviewer44', 
+    loginName: 'cmsreviewer44', 
+    defaultRole: 'Reviewer', 
+    updatedBy: 'Init User', 
+    time: '2016-09-08 16:40:56',
+    email: 'amy.tse2@cncb.com',
+    mobileNo: '',
+    phoneNo: '852-34567890',
+    remark: ''
+  },
+  { 
+    userName: 'Kwai Chui KC Yip cmscssadmin1', 
+    loginName: 'cmscssadmin1', 
+    defaultRole: 'CSS_Admin', 
+    updatedBy: 'Init User', 
+    time: '2016-09-08 16:41:08',
+    email: 'kwai.yip@cncb.com',
+    mobileNo: '852-45678901',
+    phoneNo: '852-56789012',
+    remark: 'CSS Admin'
+  }
+])
+
+// Initialize filtered users
+filteredUsers.value = users.value
 
 const roles = ref([
   { roleName: 'Admin', roleId: 'R001', status: 'Active', lastUpdated: '2025-07-01 12:00', lastUpdatedBy: 'User1' },
@@ -263,6 +534,127 @@ function formatDate(dateStr: string) {
   const d = new Date(dateStr)
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+// User Management Functions
+function queryUsers() {
+  const userFilter = userQuery.value.user.toLowerCase()
+  const loginFilter = userQuery.value.loginName.toLowerCase()
+  
+  filteredUsers.value = users.value.filter(user => {
+    const matchesUser = !userFilter || user.userName.toLowerCase().includes(userFilter)
+    const matchesLogin = !loginFilter || user.loginName.toLowerCase().includes(loginFilter)
+    return matchesUser && matchesLogin
+  })
+}
+
+function viewUser(user: any) {
+  viewUserForm.value = { ...user }
+  showViewUserModal.value = true
+}
+
+function updateUser(user: any) {
+  updateUserForm.value = { ...user }
+  showUpdateUserModal.value = true
+}
+
+function closeAddUserModal() {
+  showAddUserModal.value = false
+  newUserForm.value = { userId: '' }
+}
+
+function closeUpdateUserModal() {
+  showUpdateUserModal.value = false
+  updateUserForm.value = {
+    userName: '',
+    loginName: '',
+    defaultRole: '',
+    email: '',
+    mobileNo: '',
+    phoneNo: '',
+    remark: ''
+  }
+}
+
+function closeViewUserModal() {
+  showViewUserModal.value = false
+  viewUserForm.value = {
+    userName: '',
+    loginName: '',
+    defaultRole: '',
+    email: '',
+    mobileNo: '',
+    phoneNo: '',
+    remark: ''
+  }
+}
+
+async function validateAndAddUser() {
+  if (!newUserForm.value.userId.trim()) {
+    alert('Please enter a User ID')
+    return
+  }
+
+  console.log('Attempting to validate user ID:', newUserForm.value.userId)
+  
+  try {
+    const requestBody = { user_id: newUserForm.value.userId }
+    console.log('Sending request to backend:', requestBody)
+    
+    const response = await fetch('http://localhost:5010/validate-ad-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    })
+
+    console.log('Response status:', response.status)
+    console.log('Response headers:', response.headers)
+
+    const result = await response.json()
+    console.log('Response result:', result)
+
+    if (response.ok && result.status === 'success') {
+      // User exists in AD, create new ECL user record
+      const newUser = {
+        userName: result.display_name || newUserForm.value.userId,
+        loginName: newUserForm.value.userId,
+        defaultRole: 'Unassigned',
+        updatedBy: 'Admin',
+        time: new Date().toISOString(),
+        email: result.email || '',
+        mobileNo: '',
+        phoneNo: '',
+        remark: ''
+      }
+      
+      users.value.push(newUser)
+      filteredUsers.value = users.value
+      closeAddUserModal()
+      alert('User created successfully!')
+    } else {
+      alert(`Invalid user ID - ${result.message}`)
+    }
+  } catch (error) {
+    console.error('Error validating user:', error)
+    alert('Error connecting to Active Directory. Please try again.')
+  }
+}
+
+function saveUserUpdate() {
+  const userIndex = users.value.findIndex(u => u.loginName === updateUserForm.value.loginName)
+  if (userIndex !== -1) {
+    users.value[userIndex] = {
+      ...users.value[userIndex],
+      ...updateUserForm.value,
+      time: new Date().toISOString(),
+      updatedBy: 'Admin'
+    }
+    filteredUsers.value = users.value
+    closeUpdateUserModal()
+    alert('User updated successfully!')
+  }
 }
 
 function getFunctionStatusForRole(roleName: string, functionName: string): string {
