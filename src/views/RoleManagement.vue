@@ -84,28 +84,34 @@
           <table style="width: 100%; border-collapse: collapse; background: white; border: 1px solid #e0e0e0;">
             <thead style="background: #f7f7f7;">
               <tr>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Actions</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Role Name</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Status</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Last Updated</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Last Updated By</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Actions</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Updated By</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Time</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(role, index) in roles" :key="index">
-                <td style="padding: 12px; text-align: center; color: #007bff; cursor: pointer;">{{ role.roleName }}</td>
-                <td :style="{ padding: '12px', textAlign: 'center', color: role.status === 'Active' ? '#4CAF50' : '#f44336' }">
-                  {{ role.status === 'Inactive' ? 'D' : role.status }}
-                </td>
-                <td style="padding: 12px; text-align: center;">{{ formatDate(role.lastUpdated) }}</td>
-                <td style="padding: 12px; text-align: center;">{{ role.lastUpdatedBy }}</td>
                 <td style="padding: 12px; text-align: center;">
                   <div style="display: flex; gap: 10px; justify-content: center;">
                     <button class="step-btn" @click="openRoleModal(true, role)">Edit</button>
                   </div>
                 </td>
+                <td style="padding: 12px; text-align: center; color: #007bff; cursor: pointer;">{{ role.roleName }}</td>
+                <td :style="{ padding: '12px', textAlign: 'center', color: role.status === 'Active' ? '#4CAF50' : '#f44336' }">
+                  {{ role.status === 'Inactive' ? 'D' : role.status }}
+                </td>
+                <td style="padding: 12px; text-align: center;">{{ role.updatedBy }}</td>
+                <td style="padding: 12px; text-align: center;">{{ formatDate(role.time) }}</td>
               </tr>
               <tr v-if="showAddRow">
+                <td style="padding: 12px; text-align: center;">
+                  <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="step-btn" @click="saveNewRole">Save</button>
+                    <button class="step-btn" @click="cancelAddRow">Cancel</button>
+                  </div>
+                </td>
                 <td style="padding: 12px; text-align: center;"><input v-model="newRole.roleName" placeholder="Role Name" class="select-input-full" style="text-align: center;" /></td>
                 <td style="padding: 12px; text-align: center;">
                   <select v-model="newRole.status" class="select-input-full" style="text-align: center;">
@@ -115,12 +121,6 @@
                 </td>
                 <td style="padding: 12px; text-align: center;">-</td>
                 <td style="padding: 12px; text-align: center;">-</td>
-                <td style="padding: 12px; text-align: center;">
-                  <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="step-btn" @click="saveNewRole">Save</button>
-                    <button class="step-btn" @click="cancelAddRow">Cancel</button>
-                  </div>
-                </td>
               </tr>
             </tbody>
           </table>
@@ -136,28 +136,34 @@
           <table style="width: 100%; border-collapse: collapse; background: white; border: 1px solid #e0e0e0;">
             <thead style="background: #f7f7f7;">
               <tr>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Actions</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Function Name</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Status</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Last Updated</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Last Updated By</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Actions</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Updated By</th>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Time</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(func, idx) in allFunctions" :key="idx">
-                <td style="padding: 12px; text-align: center; color: #007bff; cursor: pointer;">{{ func.name }}</td>
-                <td :style="{ padding: '12px', textAlign: 'center', color: func.status === 'Active' ? '#4CAF50' : '#f44336' }">
-                  {{ func.status === 'Inactive' ? 'D' : func.status }}
-                </td>
-                <td style="padding: 12px; text-align: center;">{{ formatDate(func.lastUpdated) }}</td>
-                <td style="padding: 12px; text-align: center;">{{ func.lastUpdatedBy }}</td>
                 <td style="padding: 12px; text-align: center;">
                   <div style="display: flex; gap: 10px; justify-content: center;">
                     <button class="step-btn" @click="openEditFunctionModalFunc(idx)">Edit</button>
                   </div>
                 </td>
+                <td style="padding: 12px; text-align: center; color: #007bff; cursor: pointer;">{{ func.name }}</td>
+                <td :style="{ padding: '12px', textAlign: 'center', color: func.status === 'Active' ? '#4CAF50' : '#f44336' }">
+                  {{ func.status === 'Inactive' ? 'D' : func.status }}
+                </td>
+                <td style="padding: 12px; text-align: center;">{{ func.updatedBy }}</td>
+                <td style="padding: 12px; text-align: center;">{{ formatDate(func.time) }}</td>
               </tr>
               <tr v-if="showAddFunctionRow">
+                <td style="padding: 12px; text-align: center;">
+                  <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="step-btn" @click="saveNewFunction">Save</button>
+                    <button class="step-btn" @click="cancelAddFunctionRow">Cancel</button>
+                  </div>
+                </td>
                 <td style="padding: 12px; text-align: center;"><input v-model="newFunction.name" placeholder="Function Name" class="select-input-full" style="text-align: center;" /></td>
                 <td style="padding: 12px; text-align: center;">
                   <select v-model="newFunction.status" class="select-input-full" style="text-align: center;">
@@ -167,12 +173,6 @@
                 </td>
                 <td style="padding: 12px; text-align: center;">-</td>
                 <td style="padding: 12px; text-align: center;">-</td>
-                <td style="padding: 12px; text-align: center;">
-                  <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="step-btn" @click="saveNewFunction">Save</button>
-                    <button class="step-btn" @click="cancelAddFunctionRow">Cancel</button>
-                  </div>
-                </td>
               </tr>
             </tbody>
           </table>
@@ -195,15 +195,20 @@
             <table style="width: 100%; border-collapse: collapse; background: white; border: 1px solid #e0e0e0;">
               <thead style="background: #f7f7f7;">
                 <tr>
+                  <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Actions</th>
                   <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Function</th>
                   <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Status</th>
-                  <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Last Updated</th>
-                  <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Last Updated By</th>
-                  <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Actions</th>
+                  <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Updated By</th>
+                  <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center;">Time</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="(func, idx) in allFunctions" :key="idx">
+                  <td style="padding: 12px; text-align: center;">
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                      <button class="step-btn" @click="openEditFunctionModal(idx)">Edit</button>
+                    </div>
+                  </td>
                   <td style="padding: 12px; text-align: center;">{{ func.name }}</td>
                   <td
                     :style="{
@@ -214,13 +219,8 @@
                   >
                     {{ getFunctionStatusForRole(selectedRole, func.name) === 'Active' ? 'Active' : 'D' }}
                   </td>
-                  <td style="padding: 12px; text-align: center;">{{ formatDate(func.lastUpdated) }}</td>
-                  <td style="padding: 12px; text-align: center;">{{ func.lastUpdatedBy }}</td>
-                  <td style="padding: 12px; text-align: center;">
-                    <div style="display: flex; gap: 10px; justify-content: center;">
-                      <button class="step-btn" @click="openEditFunctionModal(idx)">Edit</button>
-                    </div>
-                  </td>
+                  <td style="padding: 12px; text-align: center;">{{ func.updatedBy }}</td>
+                  <td style="padding: 12px; text-align: center;">{{ formatDate(func.time) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -427,7 +427,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import axios from 'axios'
 
 const currentTab = ref('user')
 const showRoleModal = ref(false)
@@ -440,11 +441,13 @@ const originalRoleId = ref('')
 // User Management Variables
 const userQuery = ref({ user: '', loginName: '' })
 const filteredUsers = ref<any[]>([])
+const users = ref<any[]>([])
 const showAddUserModal = ref(false)
 const showUpdateUserModal = ref(false)
 const showViewUserModal = ref(false)
 const newUserForm = ref({ userId: '' })
 const updateUserForm = ref({
+  id: '',
   userName: '',
   loginName: '',
   defaultRole: '',
@@ -463,74 +466,89 @@ const viewUserForm = ref({
   remark: ''
 })
 
-// Sample user data
-const users = ref([
-  { 
-    userName: 'Init User', 
-    loginName: 'admin', 
-    defaultRole: 'System', 
-    updatedBy: 'Init User', 
-    time: '2025-05-27 00:00:00',
-    email: 'admin@cncb.com',
-    mobileNo: '',
-    phoneNo: '',
-    remark: ''
-  },
-  { 
-    userName: 'Francis KT Chan', 
-    loginName: 'francisktchan', 
-    defaultRole: 'SQ_Admin', 
-    updatedBy: 'Init User', 
-    time: '2024-04-25 14:27:59',
-    email: 'francis.chan@cncb.com',
-    mobileNo: '852-12345678',
-    phoneNo: '852-87654321',
-    remark: 'Senior Admin'
-  },
-  { 
-    userName: 'Amy LS Tse cmsreviewer45', 
-    loginName: 'cmsreviewer45', 
-    defaultRole: 'Reviewer', 
-    updatedBy: 'Init User', 
-    time: '2016-09-08 16:40:49',
-    email: 'amy.tse@cncb.com',
-    mobileNo: '852-23456789',
-    phoneNo: '',
-    remark: 'Reviewer role'
-  },
-  { 
-    userName: 'Amy LS Tse cmsreviewer44', 
-    loginName: 'cmsreviewer44', 
-    defaultRole: 'Reviewer', 
-    updatedBy: 'Init User', 
-    time: '2016-09-08 16:40:56',
-    email: 'amy.tse2@cncb.com',
-    mobileNo: '',
-    phoneNo: '852-34567890',
-    remark: ''
-  },
-  { 
-    userName: 'Kwai Chui KC Yip cmscssadmin1', 
-    loginName: 'cmscssadmin1', 
-    defaultRole: 'CSS_Admin', 
-    updatedBy: 'Init User', 
-    time: '2016-09-08 16:41:08',
-    email: 'kwai.yip@cncb.com',
-    mobileNo: '852-45678901',
-    phoneNo: '852-56789012',
-    remark: 'CSS Admin'
-  }
-])
+// Role Management Variables
+const roles = ref<any[]>([])
+const activeRoles = ref<string[]>([])
+const selectedRole = ref('')
 
-// Initialize filtered users
+// Function Management Variables
+const allFunctions = ref<any[]>([])
+const showAddFunctionRow = ref(false)
+const newFunction = ref({ name: '', status: 'Active' })
+const editFunctionIdxFunc = ref<number|null>(null)
+const editFunctionNameFunc = ref('')
+
+// Role-Function Management Variables
+const roleFunctionStatusMap = ref<{ [role: string]: { [funcName: string]: string } }>({})
+const showEditFunctionModal = ref(false)
+const showAddFunctionModal = ref(false)
+const editFunctionName = ref('')
+const editFunctionIdx = ref<number|null>(null)
+const roleFunctionEditStatus = ref('Active')
+const newFunctionName = ref('')
+
+// Load data from database
+const loadUserRecords = async () => {
+  try {
+    const response = await axios.get('https://10.25.108.72/api/get_user_records')
+    if (response.data.status === 'success') {
+      users.value = response.data.records
 filteredUsers.value = users.value
+    }
+  } catch (error) {
+    console.error('Error loading user records:', error)
+  }
+}
 
-const roles = ref([
-  { roleName: 'Admin', roleId: 'R001', status: 'Active', lastUpdated: '2025-07-01 12:00', lastUpdatedBy: 'User1' },
-  { roleName: 'RMG', roleId: 'R002', status: 'Active', lastUpdated: '2025-07-02 15:00', lastUpdatedBy: 'User2' },
-])
+const loadRoleRecords = async () => {
+  try {
+    const response = await axios.get('https://10.25.108.72/api/get_role_records')
+    if (response.data.status === 'success') {
+      roles.value = response.data.records
+      activeRoles.value = roles.value.filter(role => role.status === 'Active').map(role => role.roleName)
+    }
+  } catch (error) {
+    console.error('Error loading role records:', error)
+  }
+}
+
+const loadFunctionRecords = async () => {
+  try {
+    const response = await axios.get('https://10.25.108.72/api/get_function_records')
+    if (response.data.status === 'success') {
+      allFunctions.value = response.data.records
+    }
+  } catch (error) {
+    console.error('Error loading function records:', error)
+  }
+}
+
+const loadRoleFunctionRecords = async (roleName: string) => {
+  try {
+    const response = await axios.get(`https://10.25.108.72/api/get_role_function_records/${roleName}`)
+    if (response.data.status === 'success') {
+      const records = response.data.records
+      if (!roleFunctionStatusMap.value[roleName]) {
+        roleFunctionStatusMap.value[roleName] = {}
+      }
+      records.forEach((record: any) => {
+        roleFunctionStatusMap.value[roleName][record.functionName] = record.status
+      })
+    }
+  } catch (error) {
+    console.error('Error loading role-function records:', error)
+  }
+}
+
+// Initialize data when component mounts
+onMounted(async () => {
+  await loadUserRecords()
+  await loadRoleRecords()
+  await loadFunctionRecords()
+})
 
 function formatDate(dateStr: string) {
+  if (!dateStr) return '-'
   const d = new Date(dateStr)
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
@@ -566,6 +584,7 @@ function closeAddUserModal() {
 function closeUpdateUserModal() {
   showUpdateUserModal.value = false
   updateUserForm.value = {
+    id: '',
     userName: '',
     loginName: '',
     defaultRole: '',
@@ -601,7 +620,7 @@ async function validateAndAddUser() {
     const requestBody = { user_id: newUserForm.value.userId }
     console.log('Sending request to backend:', requestBody)
     
-    const response = await fetch('http://localhost:5010/validate-ad-user', {
+    const response = await fetch('https://10.25.108.72/api/validate-ad-user', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -629,10 +648,15 @@ async function validateAndAddUser() {
         remark: ''
       }
       
-      users.value.push(newUser)
-      filteredUsers.value = users.value
+      // Save to database
+      const saveResponse = await axios.post('https://10.25.108.72/api/save_user_record', newUser)
+      if (saveResponse.data.status === 'success') {
+        await loadUserRecords() // Reload data
       closeAddUserModal()
       alert('User created successfully!')
+      } else {
+        alert('Failed to save user record')
+      }
     } else {
       alert(`Invalid user ID - ${result.message}`)
     }
@@ -642,18 +666,30 @@ async function validateAndAddUser() {
   }
 }
 
-function saveUserUpdate() {
-  const userIndex = users.value.findIndex(u => u.loginName === updateUserForm.value.loginName)
-  if (userIndex !== -1) {
-    users.value[userIndex] = {
-      ...users.value[userIndex],
-      ...updateUserForm.value,
-      time: new Date().toISOString(),
-      updatedBy: 'Admin'
+async function saveUserUpdate() {
+  try {
+    const updateData = {
+      user_id: updateUserForm.value.id,
+      user_name: updateUserForm.value.userName,
+      default_role: updateUserForm.value.defaultRole,
+      email: updateUserForm.value.email,
+      mobile_no: updateUserForm.value.mobileNo,
+      phone_no: updateUserForm.value.phoneNo,
+      remark: updateUserForm.value.remark,
+      updated_by: 'Admin'
     }
-    filteredUsers.value = users.value
+    
+    const response = await axios.post('https://10.25.108.72/api/update_user_record', updateData)
+    if (response.data.status === 'success') {
+      await loadUserRecords() // Reload data
     closeUpdateUserModal()
     alert('User updated successfully!')
+    } else {
+      alert('Failed to update user record')
+    }
+  } catch (error) {
+    console.error('Error updating user:', error)
+    alert('Error updating user record')
   }
 }
 
@@ -665,7 +701,7 @@ function openRoleModal(edit: boolean, role: any = null) {
   isEditing.value = edit
   if (edit && role) {
     roleForm.value = { ...role, remark: '' }
-    originalRoleId.value = role.roleId
+    originalRoleId.value = role.id
   } else {
     roleForm.value = { roleName: '', roleId: '', status: 'Active', remark: '' }
     originalRoleId.value = ''
@@ -677,36 +713,45 @@ function closeRoleModal() {
   showRoleModal.value = false
 }
 
-function saveRole() {
+async function saveRole() {
+  try {
   if (isEditing.value) {
-    const idx = roles.value.findIndex(r => r.roleId === originalRoleId.value)
-    if (idx > -1) {
-      // If roleName changed, update activeRoles
-      const oldName = roles.value[idx].roleName
-      roles.value[idx] = { ...roleForm.value, lastUpdated: new Date().toISOString(), lastUpdatedBy: 'Admin' }
-      if (oldName !== roleForm.value.roleName) {
-        const i = activeRoles.value.indexOf(oldName)
-        if (i > -1) activeRoles.value[i] = roleForm.value.roleName
-        // 如果roleName变了，roleFunctions也要迁移
-        if (roleFunctionStatusMap.value[oldName]) {
-          roleFunctionStatusMap.value[roleForm.value.roleName] = roleFunctionStatusMap.value[oldName]
-          delete roleFunctionStatusMap.value[oldName]
-        } else {
-          roleFunctionStatusMap.value[roleForm.value.roleName] = {}
-        }
+      const updateData = {
+        role_id: originalRoleId.value,
+        role_name: roleForm.value.roleName,
+        status: roleForm.value.status,
+        updated_by: 'Admin'
       }
-    }
+      
+      const response = await axios.post('https://10.25.108.72/api/update_role_record', updateData)
+      if (response.data.status === 'success') {
+        await loadRoleRecords() // Reload data
+        closeRoleModal()
+        alert('Role updated successfully!')
+        } else {
+        alert('Failed to update role record')
+      }
+    } else {
+      const newRoleData = {
+        role_name: roleForm.value.roleName,
+        status: roleForm.value.status,
+        updated_by: 'Admin',
+        time: new Date().toISOString()
+      }
+      
+      const response = await axios.post('https://10.25.108.72/api/save_role_record', newRoleData)
+      if (response.data.status === 'success') {
+        await loadRoleRecords() // Reload data
+        closeRoleModal()
+        alert('Role created successfully!')
   } else {
-    roles.value.push({ ...roleForm.value, lastUpdated: new Date().toISOString(), lastUpdatedBy: 'Admin' })
-    if (!activeRoles.value.includes(roleForm.value.roleName)) {
-      activeRoles.value.push(roleForm.value.roleName)
+        alert('Failed to create role record')
     }
-    // 新增role时初始化function数组
-    if (!roleFunctionStatusMap.value[roleForm.value.roleName]) {
-      roleFunctionStatusMap.value[roleForm.value.roleName] = {}
     }
+  } catch (error) {
+    console.error('Error saving role:', error)
+    alert('Error saving role record')
   }
-  closeRoleModal()
 }
 
 function addNewRoleRow() {
@@ -714,58 +759,115 @@ function addNewRoleRow() {
   newRole.value = { roleName: '', roleId: '', status: 'Active' }
 }
 
-function saveNewRole() {
+async function saveNewRole() {
   if (!newRole.value.roleName) return
-  // Generate a roleId if not provided
-  const roleId = newRole.value.roleId || `R${String(roles.value.length + 1).padStart(3, '0')}`
-  roles.value.push({
-    ...newRole.value,
-    roleId: roleId,
-    lastUpdated: new Date().toISOString(),
-    lastUpdatedBy: 'Admin'
-  })
-  // Add to activeRoles for selection box
-  if (!activeRoles.value.includes(newRole.value.roleName)) {
-    activeRoles.value.push(newRole.value.roleName)
-  }
-  // 新增role时初始化function数组
-  if (!roleFunctionStatusMap.value[newRole.value.roleName]) {
-    roleFunctionStatusMap.value[newRole.value.roleName] = {}
-  }
+  
+  try {
+    const newRoleData = {
+      role_name: newRole.value.roleName,
+      status: newRole.value.status,
+      updated_by: 'Admin',
+      time: new Date().toISOString()
+    }
+    
+    const response = await axios.post('https://10.25.108.72/api/save_role_record', newRoleData)
+    if (response.data.status === 'success') {
+      await loadRoleRecords() // Reload data
   showAddRow.value = false
+      alert('Role created successfully!')
+    } else {
+      alert('Failed to create role record')
+    }
+  } catch (error) {
+    console.error('Error creating role:', error)
+    alert('Error creating role record')
+  }
 }
 
 function cancelAddRow() {
   showAddRow.value = false
 }
 
-const activeRoles = ref(['Admin', 'RMG'])
-const selectedRole = ref('')
+// Function Management Functions
+function addNewFunctionRow() {
+  showAddFunctionRow.value = true
+  newFunction.value = { name: '', status: 'Active' }
+}
 
-// 角色功能映射表 - 跟踪每个角色对应的功能状态
-// 当前使用硬编码数据，后续将替换为SQL数据库
-const roleFunctionStatusMap = ref<{ [role: string]: { [funcName: string]: string } }>({
-  'Admin': {
-    'Home': 'Active',
-    'Parameter': 'Active', 
-    'Run Management': 'Active',
-    'Role Management': 'Active',
-    'Audit Trial': 'Active'
-  },
-  'RMG': {
-    'Home': 'Active',
-    'Parameter': 'Active',
-    'Run Management': 'Active', 
-    'Role Management': 'Inactive',
-    'Audit Trial': 'Active'
+async function saveNewFunction() {
+  if (!newFunction.value.name) return
+  
+  try {
+    const newFunctionData = {
+      function_name: newFunction.value.name,
+      status: newFunction.value.status,
+      updated_by: 'Admin',
+      time: new Date().toISOString()
+    }
+    
+    const response = await axios.post('https://10.25.108.72/api/save_function_record', newFunctionData)
+    if (response.data.status === 'success') {
+      await loadFunctionRecords() // Reload data
+      showAddFunctionRow.value = false
+      alert('Function created successfully!')
+    } else {
+      alert('Failed to create function record')
+    }
+  } catch (error) {
+    console.error('Error creating function:', error)
+    alert('Error creating function record')
   }
-});
+}
 
-// 编辑功能弹窗控制变量
-const showEditFunctionModal = ref(false)
-const showAddFunctionModal = ref(false)
-const editFunctionName = ref('')
-const editFunctionIdx = ref<number|null>(null)
+function cancelAddFunctionRow() {
+  showAddFunctionRow.value = false
+}
+
+function openEditFunctionModalFunc(idx: number) {
+  editFunctionIdxFunc.value = idx
+  editFunctionNameFunc.value = allFunctions.value[idx].name
+  showEditFunctionModal.value = true
+}
+
+async function saveEditFunctionFunc() {
+  if (editFunctionIdxFunc.value !== null && editFunctionNameFunc.value.trim()) {
+    try {
+      const updateData = {
+        function_id: allFunctions.value[editFunctionIdxFunc.value].id,
+        function_name: editFunctionNameFunc.value.trim(),
+        status: allFunctions.value[editFunctionIdxFunc.value].status,
+        updated_by: 'Admin'
+      }
+      
+      const response = await axios.post('https://10.25.108.72/api/update_function_record', updateData)
+      if (response.data.status === 'success') {
+        await loadFunctionRecords() // Reload data
+        showEditFunctionModal.value = false
+        editFunctionIdxFunc.value = null
+        editFunctionNameFunc.value = ''
+        alert('Function updated successfully!')
+      } else {
+        alert('Failed to update function record')
+      }
+    } catch (error) {
+      console.error('Error updating function:', error)
+      alert('Error updating function record')
+    }
+  }
+}
+
+function closeEditFunctionModalFunc() {
+  showEditFunctionModal.value = false
+  editFunctionIdxFunc.value = null
+  editFunctionNameFunc.value = ''
+}
+
+// Role-Function Management Functions
+async function loadRoleFunctionData(roleName: string) {
+  if (roleName) {
+    await loadRoleFunctionRecords(roleName)
+  }
+}
 
 function addFunction() {
   if (!selectedRole.value || !newFunctionName.value.trim()) return
@@ -782,10 +884,9 @@ function closeAddFunctionModal() {
   newFunctionName.value = ''
 }
 
-// 编辑功能相关函数
 function openEditFunctionModal(idx: number) {
   editFunctionIdx.value = idx
-  editFunctionName.value = allFunctions.value[idx].name // 确保功能名称有值
+  editFunctionName.value = allFunctions.value[idx].name
   roleFunctionEditStatus.value = getFunctionStatusForRole(selectedRole.value, editFunctionName.value)
   showEditFunctionModal.value = true
 }
@@ -796,129 +897,62 @@ function closeEditFunctionModal() {
   editFunctionName.value = ''
 }
 
-// 停用/启用功能
-const allFunctions = ref([
-  { name: 'Home', status: 'Active', lastUpdated: '2025-07-03 10:00', lastUpdatedBy: 'Admin' },
-  { name: 'Parameter', status: 'Active', lastUpdated: '2025-07-03 10:00', lastUpdatedBy: 'Admin' },
-  { name: 'Run Management', status: 'Active', lastUpdated: '2025-07-03 10:00', lastUpdatedBy: 'Admin' },
-  { name: 'Role Management', status: 'Active', lastUpdated: '2025-07-03 10:00', lastUpdatedBy: 'Admin' },
-  { name: 'Audit Trial', status: 'Active', lastUpdated: '2025-07-03 10:00', lastUpdatedBy: 'Admin' },
-])
-const showAddFunctionRow = ref(false)
-const newFunction = ref({ name: '', status: 'Active' })
-const editFunctionIdxFunc = ref<number|null>(null)
-const editFunctionNameFunc = ref('')
-
-function addNewFunctionRow() {
-  showAddFunctionRow.value = true
-  newFunction.value = { name: '', status: 'Active' }
-}
-function saveNewFunction() {
-  if (!newFunction.value.name) return
-  allFunctions.value.push({
-    ...newFunction.value,
-    lastUpdated: new Date().toISOString(),
-    lastUpdatedBy: 'Admin'
-  })
-  showAddFunctionRow.value = false
-}
-function cancelAddFunctionRow() {
-  showAddFunctionRow.value = false
-}
-function openEditFunctionModalFunc(idx: number) {
-  editFunctionIdxFunc.value = idx
-  editFunctionNameFunc.value = allFunctions.value[idx].name
-  showEditFunctionModal.value = true
-}
-
-// 角色功能维护相关变量
-const roleFunctionEditStatus = ref('Active')
-const newFunctionName = ref('')
-
-function saveEditFunctionMapping() {
-  if (
-    selectedRole.value &&
-    editFunctionName.value.trim()
-  ) {
-    if (!roleFunctionStatusMap.value[selectedRole.value]) {
-      roleFunctionStatusMap.value[selectedRole.value] = {}
-    }
-    
-    if (roleFunctionEditStatus.value === 'Active') {
-      roleFunctionStatusMap.value[selectedRole.value][editFunctionName.value.trim()] = 'Active'
-    } else {
-      roleFunctionStatusMap.value[selectedRole.value][editFunctionName.value.trim()] = 'Inactive'
-    }
-  }
+async function saveEditFunctionMapping() {
+  if (selectedRole.value && editFunctionName.value.trim()) {
+    try {
+      const updateData = {
+        role_name: selectedRole.value,
+        function_name: editFunctionName.value.trim(),
+        status: roleFunctionEditStatus.value,
+        updated_by: 'Admin'
+      }
+      
+      const response = await axios.post('https://10.25.108.72/api/update_role_function_record', updateData)
+      if (response.data.status === 'success') {
+        await loadRoleFunctionRecords(selectedRole.value) // Reload data
   showEditFunctionModal.value = false
   editFunctionIdx.value = null
   editFunctionName.value = ''
-}
-
-function saveEditFunctionFunc() {
-  if (
-    editFunctionIdxFunc.value !== null &&
-    editFunctionNameFunc.value.trim()
-  ) {
-    const originalFunctionName = allFunctions.value[editFunctionIdxFunc.value].name
-    const newFunctionName = editFunctionNameFunc.value.trim()
-    const newStatus = allFunctions.value[editFunctionIdxFunc.value].status
-    
-    // 更新function信息
-    allFunctions.value[editFunctionIdxFunc.value].name = newFunctionName
-    allFunctions.value[editFunctionIdxFunc.value].lastUpdated = new Date().toISOString()
-    allFunctions.value[editFunctionIdxFunc.value].lastUpdatedBy = 'Admin'
-    
-    // 如果function状态变为Inactive，同步更新所有role下的该function状态
-    if (newStatus === 'Inactive') {
-      // 遍历所有role，将该function设置为Inactive
-      Object.keys(roleFunctionStatusMap.value).forEach(roleName => {
-        if (!roleFunctionStatusMap.value[roleName]) {
-          roleFunctionStatusMap.value[roleName] = {}
-        }
-        roleFunctionStatusMap.value[roleName][newFunctionName] = 'Inactive'
-      })
-      
-      // 如果function名称也改变了，需要更新旧名称的映射
-      if (originalFunctionName !== newFunctionName) {
-        Object.keys(roleFunctionStatusMap.value).forEach(roleName => {
-          if (roleFunctionStatusMap.value[roleName] && roleFunctionStatusMap.value[roleName][originalFunctionName]) {
-            delete roleFunctionStatusMap.value[roleName][originalFunctionName]
-          }
-        })
+        alert('Role-function mapping updated successfully!')
+      } else {
+        alert('Failed to update role-function mapping')
       }
-      
-      // TODO: 这里可以添加SQL保存逻辑
-      console.log('Function status changed to Inactive, updating all role mappings:', {
-        functionName: newFunctionName,
-        status: newStatus,
-        updatedMappings: roleFunctionStatusMap.value
-      })
+    } catch (error) {
+      console.error('Error updating role-function mapping:', error)
+      alert('Error updating role-function mapping')
     }
   }
-  showEditFunctionModal.value = false
-  editFunctionIdxFunc.value = null
-  editFunctionNameFunc.value = ''
 }
 
-function closeEditFunctionModalFunc() {
-  showEditFunctionModal.value = false
-  editFunctionIdxFunc.value = null
-  editFunctionNameFunc.value = ''
+async function saveRoleFunctionMappings() {
+  try {
+    // Save all role-function mappings for the selected role
+    const mappings = roleFunctionStatusMap.value[selectedRole.value] || {}
+    const promises = Object.entries(mappings).map(([functionName, status]) => {
+      const mappingData = {
+        role_name: selectedRole.value,
+        function_name: functionName,
+        status: status,
+        updated_by: 'Admin',
+        time: new Date().toISOString()
+    }
+      return axios.post('https://10.25.108.72/api/save_role_function_record', mappingData)
+    })
+    
+    await Promise.all(promises)
+    alert('Role-function mappings saved successfully!')
+  } catch (error) {
+    console.error('Error saving role-function mappings:', error)
+    alert('Error saving role-function mappings')
+  }
 }
 
-function saveRoleFunctionMappings() {
-  // TODO: Replace with actual SQL save operation
-  // For now, just log the current mappings
-  console.log('Saving role-function mappings to SQL:', roleFunctionStatusMap.value)
-  
-  // You can add your SQL save logic here later
-  // Example:
-  // await saveRoleFunctionMappingsToDatabase(selectedRole.value, roleFunctionStatusMap.value[selectedRole.value])
-  
-  // Show success message (you can replace this with a proper notification system)
-  alert('Role-function mappings saved successfully!')
+// Watch for role selection changes
+watch(selectedRole, (newRole) => {
+  if (newRole) {
+    loadRoleFunctionData(newRole)
 }
+})
 </script>
 
 <style scoped>

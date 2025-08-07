@@ -394,6 +394,480 @@ def update_eclengine_status_in_db(task_id, status):
     except Exception as e:
         logger.error(f"Error updating ECL engine status in DB for {task_id}: {str(e)}")
 
+#============================================= Role Management =============================================
+def create_ui_user_maintenance_table():
+    """Create the UI_user_maintenance table if it doesn't exist"""
+    try:
+        if not test_db_connection():
+            logger.error("Cannot create table - database connection failed")
+            return False
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM [{DB_NAME}].INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME = 'UI_user_maintenance'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        if not table_exists:
+            logger.info("Creating UI_user_maintenance table...")
+            cursor.execute(f"""
+                CREATE TABLE [{DB_NAME}].[dbo].[UI_user_maintenance] (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    user_name NVARCHAR(255) NOT NULL,
+                    login_name NVARCHAR(255) NOT NULL,
+                    default_role NVARCHAR(255) NOT NULL,
+                    updated_by NVARCHAR(255) NOT NULL,
+                    time DATETIME NOT NULL,
+                    email NVARCHAR(255),
+                    mobile_no NVARCHAR(50),
+                    phone_no NVARCHAR(50),
+                    remark NVARCHAR(MAX),
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            """)
+            logger.info("UI_user_maintenance table created successfully")
+        else:
+            logger.info("UI_user_maintenance table already exists")
+            
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error creating UI_user_maintenance table: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return False
+
+def create_ui_role_maintenance_table():
+    """Create the UI_role_maintenance table if it doesn't exist"""
+    try:
+        if not test_db_connection():
+            logger.error("Cannot create table - database connection failed")
+            return False
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM [{DB_NAME}].INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME = 'UI_role_maintenance'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        if not table_exists:
+            logger.info("Creating UI_role_maintenance table...")
+            cursor.execute(f"""
+                CREATE TABLE [{DB_NAME}].[dbo].[UI_role_maintenance] (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    role_name NVARCHAR(255) NOT NULL,
+                    status NVARCHAR(50) NOT NULL,
+                    updated_by NVARCHAR(255) NOT NULL,
+                    time DATETIME NOT NULL,
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            """)
+            logger.info("UI_role_maintenance table created successfully")
+        else:
+            logger.info("UI_role_maintenance table already exists")
+            
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error creating UI_role_maintenance table: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return False
+
+def create_ui_function_maintenance_table():
+    """Create the UI_function_maintenance table if it doesn't exist"""
+    try:
+        if not test_db_connection():
+            logger.error("Cannot create table - database connection failed")
+            return False
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        # Check if table exists
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM [{DB_NAME}].INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME = 'UI_function_maintenance'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        if not table_exists:
+            logger.info("Creating UI_function_maintenance table...")
+            cursor.execute(f"""
+                CREATE TABLE [{DB_NAME}].[dbo].[UI_function_maintenance] (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    function_name NVARCHAR(255) NOT NULL,
+                    status NVARCHAR(50) NOT NULL,
+                    updated_by NVARCHAR(255) NOT NULL,
+                    time DATETIME NOT NULL,
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            """)
+            logger.info("UI_function_maintenance table created successfully")
+        else:
+            logger.info("UI_function_maintenance table already exists")
+            
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error creating UI_function_maintenance table: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return False
+
+def create_ui_role_function_table(role_name):
+    """Create a UI_role_function_<rolename> table if it doesn't exist and populate with all functions"""
+    try:
+        if not test_db_connection():
+            logger.error("Cannot create table - database connection failed")
+            return False
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        table_name = f"UI_role_function_{role_name.replace(' ', '_').replace('-', '_')}"
+        
+        # Check if table exists
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM [{DB_NAME}].INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME = '{table_name}'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        
+        if not table_exists:
+            logger.info(f"Creating {table_name} table...")
+            cursor.execute(f"""
+                CREATE TABLE [{DB_NAME}].[dbo].[{table_name}] (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    function_name NVARCHAR(255) NOT NULL,
+                    status NVARCHAR(50) NOT NULL,
+                    updated_by NVARCHAR(255) NOT NULL,
+                    time DATETIME NOT NULL,
+                    created_at DATETIME DEFAULT GETDATE()
+                )
+            """)
+            logger.info(f"{table_name} table created successfully")
+        
+        # Always populate table with all existing functions (status='Inactive' by default)
+        cursor.execute(f"""
+            SELECT function_name FROM [{DB_NAME}].[dbo].[UI_function_maintenance]
+            WHERE status = 'Active'
+        """)
+        all_functions = [row[0] for row in cursor.fetchall()]
+        
+        if all_functions:
+            # Get existing function mappings for this role
+            if table_exists:
+                cursor.execute(f"""
+                    SELECT function_name FROM [{DB_NAME}].[dbo].[{table_name}]
+                """)
+                existing_functions = [row[0] for row in cursor.fetchall()]
+            else:
+                existing_functions = []
+            
+            # Find functions that need to be added
+            missing_functions = [func for func in all_functions if func not in existing_functions]
+            
+            if missing_functions:
+                current_time = datetime.now()
+                for function_name in missing_functions:
+                    cursor.execute(f"""
+                        INSERT INTO [{DB_NAME}].[dbo].[{table_name}] 
+                        (function_name, status, updated_by, time)
+                        VALUES (?, ?, ?, ?)
+                    """, (function_name, 'Inactive', 'System', current_time))
+                
+                logger.info(f"Added {len(missing_functions)} missing functions to {table_name}")
+            else:
+                logger.info(f"All functions already exist in {table_name}")
+        else:
+            logger.warning(f"No active functions found to populate {table_name} table")
+            
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error creating/populating {table_name} table: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return False
+
+def save_user_record(user_name, login_name, default_role, updated_by, time, email=None, mobile_no=None, phone_no=None, remark=None):
+    """Save user record to database"""
+    try:
+        create_ui_user_maintenance_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO [{DB_NAME}].[dbo].[UI_user_maintenance] 
+            (user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark))
+        conn.close()
+        logger.info(f"Successfully saved user record: {user_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving user record: {str(e)}")
+        return False
+
+def get_user_records():
+    """Get all user records from database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark
+            FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            ORDER BY time DESC
+        """)
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'userName': row[1],
+                'loginName': row[2],
+                'defaultRole': row[3],
+                'updatedBy': row[4],
+                'time': row[5].strftime('%Y-%m-%d %H:%M:%S') if row[5] else '',
+                'email': row[6] or '',
+                'mobileNo': row[7] or '',
+                'phoneNo': row[8] or '',
+                'remark': row[9] or ''
+            })
+        conn.close()
+        return records
+    except Exception as e:
+        logger.error(f"Error getting user records: {str(e)}")
+        return []
+
+def update_user_record(user_id, user_name, default_role, email, mobile_no, phone_no, remark, updated_by):
+    """Update user record in database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[UI_user_maintenance]
+            SET user_name = ?, default_role = ?, email = ?, mobile_no = ?, phone_no = ?, remark = ?, updated_by = ?, time = GETDATE()
+            WHERE id = ?
+        """, (user_name, default_role, email, mobile_no, phone_no, remark, updated_by, user_id))
+        conn.close()
+        logger.info(f"Successfully updated user record: {user_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating user record: {str(e)}")
+        return False
+
+def save_role_record(role_name, status, updated_by, time):
+    """Save role record to database"""
+    try:
+        logger.info(f"Starting save_role_record with params: role_name={role_name}, status={status}, updated_by={updated_by}, time={time}")
+        
+        # Test database connection first
+        if not test_db_connection():
+            logger.error("Database connection failed in save_role_record")
+            return False
+            
+        # Create table if not exists
+        table_created = create_ui_role_maintenance_table()
+        if not table_created:
+            logger.error("Failed to create UI_role_maintenance table")
+            return False
+            
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        logger.info(f"Executing INSERT statement for role: {role_name}")
+        cursor.execute(f"""
+            INSERT INTO [{DB_NAME}].[dbo].[UI_role_maintenance] 
+            (role_name, status, updated_by, time)
+            VALUES (?, ?, ?, ?)
+        """, (role_name, status, updated_by, time))
+        
+        conn.close()
+        logger.info(f"Successfully saved role record: {role_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving role record: {str(e)}")
+        logger.error(f"Full exception details: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return False
+
+def get_role_records():
+    """Get all role records from database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, role_name, status, updated_by, time
+            FROM [{DB_NAME}].[dbo].[UI_role_maintenance]
+            ORDER BY time DESC
+        """)
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'roleName': row[1],
+                'status': row[2],
+                'updatedBy': row[3],
+                'time': row[4].strftime('%Y-%m-%d %H:%M:%S') if row[4] else ''
+            })
+        conn.close()
+        return records
+    except Exception as e:
+        logger.error(f"Error getting role records: {str(e)}")
+        return []
+
+def update_role_record(role_id, role_name, status, updated_by):
+    """Update role record in database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[UI_role_maintenance]
+            SET role_name = ?, status = ?, updated_by = ?, time = GETDATE()
+            WHERE id = ?
+        """, (role_name, status, updated_by, role_id))
+        conn.close()
+        logger.info(f"Successfully updated role record: {role_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating role record: {str(e)}")
+        return False
+
+def save_function_record(function_name, status, updated_by, time):
+    """Save function record to database"""
+    try:
+        create_ui_function_maintenance_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO [{DB_NAME}].[dbo].[UI_function_maintenance] 
+            (function_name, status, updated_by, time)
+            VALUES (?, ?, ?, ?)
+        """, (function_name, status, updated_by, time))
+        conn.close()
+        logger.info(f"Successfully saved function record: {function_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving function record: {str(e)}")
+        return False
+
+def get_function_records():
+    """Get all function records from database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, function_name, status, updated_by, time
+            FROM [{DB_NAME}].[dbo].[UI_function_maintenance]
+            ORDER BY time DESC
+        """)
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'name': row[1],
+                'status': row[2],
+                'updatedBy': row[3],
+                'time': row[4].strftime('%Y-%m-%d %H:%M:%S') if row[4] else ''
+            })
+        conn.close()
+        return records
+    except Exception as e:
+        logger.error(f"Error getting function records: {str(e)}")
+        return []
+
+def update_function_record(function_id, function_name, status, updated_by):
+    """Update function record in database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[UI_function_maintenance]
+            SET function_name = ?, status = ?, updated_by = ?, time = GETDATE()
+            WHERE id = ?
+        """, (function_name, status, updated_by, function_id))
+        conn.close()
+        logger.info(f"Successfully updated function record: {function_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating function record: {str(e)}")
+        return False
+
+def save_role_function_record(role_name, function_name, status, updated_by, time):
+    """Save role-function record to database"""
+    try:
+        create_ui_role_function_table(role_name)
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        table_name = f"UI_role_function_{role_name.replace(' ', '_').replace('-', '_')}"
+        cursor.execute(f"""
+            INSERT INTO [{DB_NAME}].[dbo].[{table_name}] 
+            (function_name, status, updated_by, time)
+            VALUES (?, ?, ?, ?)
+        """, (function_name, status, updated_by, time))
+        conn.close()
+        logger.info(f"Successfully saved role-function record: {role_name} - {function_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving role-function record: {str(e)}")
+        return False
+
+def get_role_function_records(role_name):
+    """Get all role-function records for a specific role from database"""
+    try:
+        # Ensure the table exists and is populated with all functions
+        create_ui_role_function_table(role_name)
+        
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        table_name = f"UI_role_function_{role_name.replace(' ', '_').replace('-', '_')}"
+        cursor.execute(f"""
+            SELECT id, function_name, status, updated_by, time
+            FROM [{DB_NAME}].[dbo].[{table_name}]
+            ORDER BY time DESC
+        """)
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'functionName': row[1],
+                'status': row[2],
+                'updatedBy': row[3],
+                'time': row[4].strftime('%Y-%m-%d %H:%M:%S') if row[4] else ''
+            })
+        conn.close()
+        return records
+    except Exception as e:
+        logger.error(f"Error getting role-function records: {str(e)}")
+        return []
+
+def update_role_function_record(role_name, function_name, status, updated_by):
+    """Update role-function record in database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        table_name = f"UI_role_function_{role_name.replace(' ', '_').replace('-', '_')}"
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[{table_name}]
+            SET status = ?, updated_by = ?, time = GETDATE()
+            WHERE function_name = ?
+        """, (status, updated_by, function_name))
+        conn.close()
+        logger.info(f"Successfully updated role-function record: {role_name} - {function_name}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating role-function record: {str(e)}")
+        return False
+
+
 ############################################################################ Main-Functions
 #============================================= Parameter =============================================
 # Parameter: Upload File
@@ -1477,6 +1951,210 @@ def check_report_availability_for_timestamp(timestamp):
         return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500
 
 
+#============================================= Role Management =============================================
+@app.route('/get_user_records', methods=['GET'])
+def api_get_user_records():
+    """Get all user records from database"""
+    try:
+        records = get_user_records()
+        return jsonify({'status': 'success', 'records': records})
+    except Exception as e:
+        logger.error(f"Error in api_get_user_records: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/save_user_record', methods=['POST'])
+def api_save_user_record():
+    """Save user record to database"""
+    try:
+        data = request.get_json()
+        success = save_user_record(
+            user_name=data['user_name'],
+            login_name=data['login_name'],
+            default_role=data['default_role'],
+            updated_by=data['updated_by'],
+            time=data['time'],
+            email=data.get('email'),
+            mobile_no=data.get('mobile_no'),
+            phone_no=data.get('phone_no'),
+            remark=data.get('remark')
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'User record saved successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to save user record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_save_user_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/update_user_record', methods=['POST'])
+def api_update_user_record():
+    """Update user record in database"""
+    try:
+        data = request.get_json()
+        success = update_user_record(
+            user_id=data['user_id'],
+            user_name=data['user_name'],
+            default_role=data['default_role'],
+            email=data.get('email'),
+            mobile_no=data.get('mobile_no'),
+            phone_no=data.get('phone_no'),
+            remark=data.get('remark'),
+            updated_by=data['updated_by']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'User record updated successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to update user record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_update_user_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/get_role_records', methods=['GET'])
+def api_get_role_records():
+    """Get all role records from database"""
+    try:
+        records = get_role_records()
+        return jsonify({'status': 'success', 'records': records})
+    except Exception as e:
+        logger.error(f"Error in api_get_role_records: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/save_role_record', methods=['POST'])
+def api_save_role_record():
+    """Save role record to database"""
+    try:
+        data = request.get_json()
+        success = save_role_record(
+            role_name=data['role_name'],
+            status=data['status'],
+            updated_by=data['updated_by'],
+            time=data['time']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'Role record saved successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to save role record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_save_role_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/update_role_record', methods=['POST'])
+def api_update_role_record():
+    """Update role record in database"""
+    try:
+        data = request.get_json()
+        success = update_role_record(
+            role_id=data['role_id'],
+            role_name=data['role_name'],
+            status=data['status'],
+            updated_by=data['updated_by']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'Role record updated successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to update role record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_update_role_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/get_function_records', methods=['GET'])
+def api_get_function_records():
+    """Get all function records from database"""
+    try:
+        records = get_function_records()
+        return jsonify({'status': 'success', 'records': records})
+    except Exception as e:
+        logger.error(f"Error in api_get_function_records: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/save_function_record', methods=['POST'])
+def api_save_function_record():
+    """Save function record to database"""
+    try:
+        data = request.get_json()
+        success = save_function_record(
+            function_name=data['function_name'],
+            status=data['status'],
+            updated_by=data['updated_by'],
+            time=data['time']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'Function record saved successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to save function record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_save_function_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/update_function_record', methods=['POST'])
+def api_update_function_record():
+    """Update function record in database"""
+    try:
+        data = request.get_json()
+        success = update_function_record(
+            function_id=data['function_id'],
+            function_name=data['function_name'],
+            status=data['status'],
+            updated_by=data['updated_by']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'Function record updated successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to update function record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_update_function_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/get_role_function_records/<role_name>', methods=['GET'])
+def api_get_role_function_records(role_name):
+    """Get all role-function records for a specific role from database"""
+    try:
+        records = get_role_function_records(role_name)
+        return jsonify({'status': 'success', 'records': records})
+    except Exception as e:
+        logger.error(f"Error in api_get_role_function_records: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/save_role_function_record', methods=['POST'])
+def api_save_role_function_record():
+    """Save role-function record to database"""
+    try:
+        data = request.get_json()
+        success = save_role_function_record(
+            role_name=data['role_name'],
+            function_name=data['function_name'],
+            status=data['status'],
+            updated_by=data['updated_by'],
+            time=data['time']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'Role-function record saved successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to save role-function record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_save_role_function_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/update_role_function_record', methods=['POST'])
+def api_update_role_function_record():
+    """Update role-function record in database"""
+    try:
+        data = request.get_json()
+        success = update_role_function_record(
+            role_name=data['role_name'],
+            function_name=data['function_name'],
+            status=data['status'],
+            updated_by=data['updated_by']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'Role-function record updated successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to update role-function record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_update_role_function_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 ############################################################################ AD Validation
 # LDAP Configuration
 LDAP_SERVER = 'ldap://10.30.244.12:389'
@@ -1562,6 +2240,10 @@ if __name__ == '__main__':
     logger.info("Starting backend server...")
     if test_db_connection():
         create_ui_parameter_table()
+        create_ui_user_maintenance_table()
+        create_ui_role_maintenance_table()
+        create_ui_function_maintenance_table()
+        logger.info("All database tables initialized successfully")
     else:
         logger.error("Database connection failed")
     logger.info("Starting Flask server on port 5010...")
