@@ -1,0 +1,256 @@
+import { ref} from 'vue'
+import axios from 'axios'
+
+// Types
+export interface User {
+  id: number
+  userName: string
+  loginName: string
+  defaultRole: string
+  email?: string
+  mobileNo?: string
+  phoneNo?: string
+  remark?: string
+}
+
+export interface LoginCredentials {
+  username: string
+  password: string
+}
+
+export interface AuthResponse {
+  success: boolean
+  user?: User
+  permissions?: string[]
+  message?: string
+  error?: string
+}
+
+// State
+export const authenticated = ref(false)
+export const validUser = ref(false)
+export const user = ref<User | null>(null)
+export const userPermissions = ref<string[]>([])
+export const error = ref<string | null>(null)
+export const loading = ref(false)
+
+// API Configuration
+const API_BASE_URL = '/api'
+
+// Authentication Functions
+export async function login(credentials: LoginCredentials): Promise<AuthResponse> {
+  loading.value = true
+  error.value = null
+  
+  try {
+    // Validate against AD/LDAP with detailed error messages
+    const ldapResponse = await axios.post(`${API_BASE_URL}/validate-ldap-user`, {
+      username: credentials.username,
+      password: credentials.password
+    })
+    
+    if (ldapResponse.data.status === 'error') {
+      // Return specific error based on error type
+      const errorType = ldapResponse.data.error_type
+      let errorMessage = 'Authentication failed'
+      
+      if (errorType === 'invalid_username') {
+        errorMessage = 'Invalid username'
+      } else if (errorType === 'invalid_password') {
+        errorMessage = 'Invalid password'
+      } else {
+        errorMessage = ldapResponse.data.message || 'Invalid username or password'
+      }
+      
+      error.value = errorMessage
+      return {
+        success: false,
+        error: errorMessage
+      }
+    }
+    
+    // If LDAP validation passes, check user in database
+    const userResponse = await axios.post(`${API_BASE_URL}/validate-user`, {
+      username: credentials.username
+    })
+    
+    if (userResponse.data.status === 'error') {
+      const errorMessage = 'Access Denied - User not added'
+      error.value = errorMessage
+      return {
+        success: false,
+        error: errorMessage
+      }
+    }
+    
+    // Get user permissions
+    const permissionsResponse = await axios.get(`${API_BASE_URL}/get-user-permissions/${credentials.username}`)
+    
+    if (permissionsResponse.data.status === 'success') {
+      userPermissions.value = permissionsResponse.data.permissions || []
+    }
+    
+    // Set user data
+    user.value = userResponse.data.user
+    authenticated.value = true
+    validUser.value = true
+    
+    // Store in localStorage for persistence
+    localStorage.setItem('user', JSON.stringify(user.value))
+    localStorage.setItem('permissions', JSON.stringify(userPermissions.value))
+    localStorage.setItem('authenticated', 'true')
+    
+    return {
+      success: true,
+      user: user.value || undefined,
+      permissions: userPermissions.value
+    }
+    
+  } catch (err: any) {
+    // Handle specific error responses from API
+    let errorMessage = 'Login failed'
+    
+    if (err.response?.data) {
+      const errorData = err.response.data
+      const errorType = errorData.error_type
+      
+      if (errorType === 'invalid_username') {
+        errorMessage = 'Invalid username'
+      } else if (errorType === 'invalid_password') {
+        errorMessage = 'Invalid password'
+      } else if (errorData.message) {
+        errorMessage = errorData.message
+      }
+    } else if (err.message) {
+      errorMessage = err.message
+    }
+    
+    error.value = errorMessage
+    
+    return {
+      success: false,
+      error: errorMessage
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+export async function logout(): Promise<void> {
+  try {
+    // Call logout API if needed
+    await axios.post(`${API_BASE_URL}/logout`)
+  } catch (err) {
+    // Ignore logout API errors
+    console.warn('Logout API call failed:', err)
+  } finally {
+    // Clear local state
+    authenticated.value = false
+    validUser.value = false
+    user.value = null
+    userPermissions.value = []
+    error.value = null
+    
+    // Clear localStorage
+    localStorage.removeItem('user')
+    localStorage.removeItem('permissions')
+    localStorage.removeItem('authenticated')
+  }
+}
+
+export async function checkAuthStatus(): Promise<void> {
+  const storedUser = localStorage.getItem('user')
+  const storedPermissions = localStorage.getItem('permissions')
+  const storedAuth = localStorage.getItem('authenticated')
+  
+  // If no stored session data, user is not authenticated - don't call API
+  if (!storedUser || !storedPermissions || storedAuth !== 'true') {
+    clearAuthState()
+    return
+  }
+  
+  try {
+    // Validate stored session with server only if we have stored data
+    const response = await axios.post(`${API_BASE_URL}/validate-session`, {
+      username: JSON.parse(storedUser).loginName
+    })
+    
+    if (response.data.status === 'success') {
+      user.value = JSON.parse(storedUser)
+      userPermissions.value = JSON.parse(storedPermissions)
+      authenticated.value = true
+      validUser.value = true
+      return
+    }
+  } catch (err) {
+    console.warn('Session validation failed:', err)
+  }
+  
+  // Clear invalid session without calling logout API
+  clearAuthState()
+}
+
+// Helper function to clear auth state without API call
+function clearAuthState(): void {
+  authenticated.value = false
+  validUser.value = false
+  user.value = null
+  userPermissions.value = []
+  error.value = null
+  
+  // Clear localStorage
+  localStorage.removeItem('user')
+  localStorage.removeItem('permissions')
+  localStorage.removeItem('authenticated')
+}
+
+export async function initializeAuth(): Promise<void> {
+  loading.value = true
+  try {
+    await checkAuthStatus()
+  } finally {
+    loading.value = false
+  }
+}
+
+// Permission Functions
+export function hasPermission(permission: string): boolean {
+  return userPermissions.value.includes(permission)
+}
+
+export function hasAnyPermission(permissions: string[]): boolean {
+  return permissions.some(permission => hasPermission(permission))
+}
+
+export function hasAllPermissions(permissions: string[]): boolean {
+  return permissions.every(permission => hasPermission(permission))
+}
+
+// User Display Functions
+export function getUserDisplayName(): string {
+  if (user.value) {
+    return user.value.userName || user.value.loginName
+  }
+  return 'Unknown User'
+}
+
+export function getUserRole(): string {
+  return user.value?.defaultRole || 'Unassigned'
+}
+
+// Utility Functions
+export function isAuthenticated(): boolean {
+  return authenticated.value && validUser.value
+}
+
+export function getAuthError(): string | null {
+  return error.value
+}
+
+export function clearAuthError(): void {
+  error.value = null
+}
+
+export function isLoading(): boolean {
+  return loading.value
+} 
