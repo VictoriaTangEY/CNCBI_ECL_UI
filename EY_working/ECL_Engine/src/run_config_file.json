@@ -9,6 +9,7 @@
 
     "PREV_YYMM": 20231231,
     "RUN_MODE": 4,
+    "SANITY_CHECK_MODE": "2.1",
     "TO_DB": "ON",
     "TEST_MODE": "ON",
     "TEST_DEAL_LIST": [],

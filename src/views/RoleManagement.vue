@@ -429,6 +429,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import axios from 'axios'
+import { getUserDisplayName } from '../services/authService'
 
 const currentTab = ref('user')
 const showRoleModal = ref(false)
@@ -490,7 +491,7 @@ const newFunctionName = ref('')
 // Load data from database
 const loadUserRecords = async () => {
   try {
-    const response = await axios.get('https://10.25.108.72/api/get_user_records')
+    const response = await axios.get('/api/get_user_records')
     if (response.data.status === 'success') {
       users.value = response.data.records
 filteredUsers.value = users.value
@@ -502,7 +503,7 @@ filteredUsers.value = users.value
 
 const loadRoleRecords = async () => {
   try {
-    const response = await axios.get('https://10.25.108.72/api/get_role_records')
+    const response = await axios.get('/api/get_role_records')
     if (response.data.status === 'success') {
       roles.value = response.data.records
       activeRoles.value = roles.value.filter(role => role.status === 'Active').map(role => role.roleName)
@@ -514,7 +515,7 @@ const loadRoleRecords = async () => {
 
 const loadFunctionRecords = async () => {
   try {
-    const response = await axios.get('https://10.25.108.72/api/get_function_records')
+    const response = await axios.get('/api/get_function_records')
     if (response.data.status === 'success') {
       allFunctions.value = response.data.records
     }
@@ -525,7 +526,7 @@ const loadFunctionRecords = async () => {
 
 const loadRoleFunctionRecords = async (roleName: string) => {
   try {
-    const response = await axios.get(`https://10.25.108.72/api/get_role_function_records/${roleName}`)
+    const response = await axios.get(`/api/get_role_function_records/${roleName}`)
     if (response.data.status === 'success') {
       const records = response.data.records
       if (!roleFunctionStatusMap.value[roleName]) {
@@ -620,7 +621,7 @@ async function validateAndAddUser() {
     const requestBody = { user_id: newUserForm.value.userId }
     console.log('Sending request to backend:', requestBody)
     
-    const response = await fetch('https://10.25.108.72/api/validate-ad-user', {
+    const response = await fetch('/api/validate-ad-user', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -640,7 +641,7 @@ async function validateAndAddUser() {
         user_name: result.display_name || newUserForm.value.userId,
         login_name: newUserForm.value.userId,
         default_role: 'Unassigned',
-        updated_by: 'Admin',
+        updated_by: getUserDisplayName(),
         time: new Date().toISOString(),
         email: result.email || '',
         mobile_no: '',
@@ -650,7 +651,7 @@ async function validateAndAddUser() {
       
       // Save to database
       console.log('Sending user data to backend:', newUser)
-      const saveResponse = await axios.post('https://10.25.108.72/api/save_user_record', newUser)
+      const saveResponse = await axios.post('/api/save_user_record', newUser)
       if (saveResponse.data.status === 'success') {
         await loadUserRecords() // Reload data
       closeAddUserModal()
@@ -677,10 +678,10 @@ async function saveUserUpdate() {
       mobile_no: updateUserForm.value.mobileNo,
       phone_no: updateUserForm.value.phoneNo,
       remark: updateUserForm.value.remark,
-      updated_by: 'Admin'
+      updated_by: getUserDisplayName()
     }
     
-    const response = await axios.post('https://10.25.108.72/api/update_user_record', updateData)
+    const response = await axios.post('/api/update_user_record', updateData)
     if (response.data.status === 'success') {
       await loadUserRecords() // Reload data
     closeUpdateUserModal()
@@ -721,10 +722,10 @@ async function saveRole() {
         role_id: originalRoleId.value,
         role_name: roleForm.value.roleName,
         status: roleForm.value.status,
-        updated_by: 'Admin'
+        updated_by: getUserDisplayName()
       }
       
-      const response = await axios.post('https://10.25.108.72/api/update_role_record', updateData)
+      const response = await axios.post('/api/update_role_record', updateData)
       if (response.data.status === 'success') {
         await loadRoleRecords() // Reload data
         closeRoleModal()
@@ -736,11 +737,11 @@ async function saveRole() {
       const newRoleData = {
         role_name: roleForm.value.roleName,
         status: roleForm.value.status,
-        updated_by: 'Admin',
+        updated_by: getUserDisplayName(),
         time: new Date().toISOString()
       }
       
-      const response = await axios.post('https://10.25.108.72/api/save_role_record', newRoleData)
+      const response = await axios.post('/api/save_role_record', newRoleData)
       if (response.data.status === 'success') {
         await loadRoleRecords() // Reload data
         closeRoleModal()
@@ -767,11 +768,11 @@ async function saveNewRole() {
     const newRoleData = {
       role_name: newRole.value.roleName,
       status: newRole.value.status,
-      updated_by: 'Admin',
+      updated_by: getUserDisplayName(),
       time: new Date().toISOString()
     }
     
-    const response = await axios.post('https://10.25.108.72/api/save_role_record', newRoleData)
+    const response = await axios.post('/api/save_role_record', newRoleData)
     if (response.data.status === 'success') {
       await loadRoleRecords() // Reload data
   showAddRow.value = false
@@ -802,11 +803,11 @@ async function saveNewFunction() {
     const newFunctionData = {
       function_name: newFunction.value.name,
       status: newFunction.value.status,
-      updated_by: 'Admin',
+      updated_by: getUserDisplayName(),
       time: new Date().toISOString()
     }
     
-    const response = await axios.post('https://10.25.108.72/api/save_function_record', newFunctionData)
+    const response = await axios.post('/api/save_function_record', newFunctionData)
     if (response.data.status === 'success') {
       await loadFunctionRecords() // Reload data
       showAddFunctionRow.value = false
@@ -837,10 +838,10 @@ async function saveEditFunctionFunc() {
         function_id: allFunctions.value[editFunctionIdxFunc.value].id,
         function_name: editFunctionNameFunc.value.trim(),
         status: allFunctions.value[editFunctionIdxFunc.value].status,
-        updated_by: 'Admin'
+        updated_by: getUserDisplayName()
       }
       
-      const response = await axios.post('https://10.25.108.72/api/update_function_record', updateData)
+      const response = await axios.post('/api/update_function_record', updateData)
       if (response.data.status === 'success') {
         await loadFunctionRecords() // Reload data
         showEditFunctionModal.value = false
@@ -905,10 +906,10 @@ async function saveEditFunctionMapping() {
         role_name: selectedRole.value,
         function_name: editFunctionName.value.trim(),
         status: roleFunctionEditStatus.value,
-        updated_by: 'Admin'
+        updated_by: getUserDisplayName()
       }
       
-      const response = await axios.post('https://10.25.108.72/api/update_role_function_record', updateData)
+      const response = await axios.post('/api/update_role_function_record', updateData)
       if (response.data.status === 'success') {
         await loadRoleFunctionRecords(selectedRole.value) // Reload data
   showEditFunctionModal.value = false
@@ -934,10 +935,10 @@ async function saveRoleFunctionMappings() {
         role_name: selectedRole.value,
         function_name: functionName,
         status: status,
-        updated_by: 'Admin',
+        updated_by: getUserDisplayName(),
         time: new Date().toISOString()
     }
-      return axios.post('https://10.25.108.72/api/save_role_function_record', mappingData)
+      return axios.post('/api/save_role_function_record', mappingData)
     })
     
     await Promise.all(promises)

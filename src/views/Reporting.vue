@@ -55,6 +55,16 @@
         </div>
       </div>
     </div>
+
+    <!-- Download Processing Popup -->
+    <div v-if="showDownloadPopup" class="process-popup">
+      <div class="process-popup-content">
+        <h3>Preparing Download</h3>
+        <p>Report is being prepared for download. Please wait...</p>
+        <div class="spinner"></div>
+        <button @click="closeDownloadPopup" style="margin-top: 16px; padding: 8px 20px; border-radius: 6px; border: none; background: #eee; cursor: pointer;">Close</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -77,6 +87,14 @@ const loading = ref(true)
 
 // Add state for popup visibility
 const showNoTimestampPopup = ref(false)
+const showDownloadPopup = ref(false)
+const downloadPopupClosed = ref(false)
+
+// Function to close download popup
+function closeDownloadPopup() {
+  showDownloadPopup.value = false
+  downloadPopupClosed.value = true
+}
 
 // Compute the dynamic report base path
 const computeReportBasePath = () => {
@@ -102,7 +120,7 @@ async function checkReportAvailability() {
   }
 
   try {
-    const response = await axios.get(`https://10.25.108.72/api/check_report_availability/${timestamp.value}`)
+    const response = await axios.get(`/api/check_report_availability/${timestamp.value}`)
     reportsAvailable.value = response.data.has_reports
   } catch (error) {
     console.error('Error checking report availability:', error)
@@ -153,6 +171,9 @@ async function downloadReport(reportTitle) {
   }
 
   try {
+    // Show download popup
+    showDownloadPopup.value = true
+    downloadPopupClosed.value = false
     let endpoint = ''
     let filename = ''
     
@@ -182,7 +203,7 @@ async function downloadReport(reportTitle) {
     }
     
     // Make API call to backend with dynamic report base path
-    const apiUrl = new URL(`https://10.25.108.72/api${endpoint}`)
+    const apiUrl = new URL(`/api${endpoint}`, window.location.origin)
     apiUrl.searchParams.append('report_base_path', reportBasePath.value)
     
     const response = await fetch(apiUrl.toString(), {
@@ -207,11 +228,16 @@ async function downloadReport(reportTitle) {
     document.body.removeChild(a)
     URL.revokeObjectURL(downloadUrl)
     
+    // Close download popup
+    showDownloadPopup.value = false
+    
     console.log(`Successfully downloaded ${reportTitle} from ${reportBasePath.value}`)
   } catch (error) {
     console.error(`Error downloading ${reportTitle}:`, error)
-    // You could add a user notification here if needed
-    alert(`Failed to download ${reportTitle}.`)
+    showDownloadPopup.value = false
+    if (!downloadPopupClosed.value) {
+      alert(`Failed to download ${reportTitle}. Please try again.`)
+    }
   }
 }
 
@@ -336,5 +362,41 @@ onMounted(() => {
 
 .popup-btn:hover {
   background: #e05222;
+}
+
+.process-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.process-popup-content {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 20px auto;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #153D77;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style> 

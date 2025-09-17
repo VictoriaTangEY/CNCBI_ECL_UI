@@ -69,9 +69,10 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
       }
     }
     
-    // If LDAP validation passes, check user in database
+    // If LDAP validation passes, check user in database using standardized username
+    const standardizedUsername = ldapResponse.data.standardized_username || credentials.username
     const userResponse = await axios.post(`${API_BASE_URL}/validate-user`, {
-      username: credentials.username
+      username: standardizedUsername
     })
     
     if (userResponse.data.status === 'error') {
@@ -83,8 +84,8 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
       }
     }
     
-    // Get user permissions
-    const permissionsResponse = await axios.get(`${API_BASE_URL}/get-user-permissions/${credentials.username}`)
+    // Get user permissions using standardized username
+    const permissionsResponse = await axios.get(`${API_BASE_URL}/get-user-permissions/${standardizedUsername}`)
     
     if (permissionsResponse.data.status === 'success') {
       userPermissions.value = permissionsResponse.data.permissions || []
@@ -138,8 +139,12 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
 
 export async function logout(): Promise<void> {
   try {
-    // Call logout API if needed
-    await axios.post(`${API_BASE_URL}/logout`)
+    // Get current user info before clearing state
+    const currentUser = user.value
+    const username = currentUser?.loginName || 'Unknown'
+    
+    // Call logout API with username
+    await axios.post(`${API_BASE_URL}/logout`, { username })
   } catch (err) {
     // Ignore logout API errors
     console.warn('Logout API call failed:', err)

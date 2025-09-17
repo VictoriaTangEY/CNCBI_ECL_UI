@@ -17,7 +17,8 @@ import pyodbc
 import sys
 from pathlib import Path
 import json
-from ldap3 import Server, Connection, ALL, NTLM, SIMPLE
+import signal
+from ldap3 import Server, Connection, ALL, NTLM
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
@@ -55,7 +56,7 @@ BASE_UPLOAD_FOLDER = r'/u01/Apps/EY_working/ECL_UI_v0.1/interim/'
 BASE_APPROVED_FOLDER = r'/u01/Apps/EY_working/ECL_UI_v0.1/approved/'
 
 # Base ECL Engine folder
-BASE_ECL_ENGINE = r'/u01/Apps/EY_working/ECL_Engine_v0.2/'
+BASE_ECL_ENGINE = r'/u01/Apps/EY_working/ECL_Engine_v0.4/'
 CONFIG_FILE_PATH = os.path.join(BASE_ECL_ENGINE, 'run_config_file.json')
 
 # Report file paths
@@ -70,59 +71,93 @@ REPORT_FILES = {
     ]
 }
 
-
 ############################################################################ Threading
 task_queue = Queue()
 task_status: Dict[str, dict] = {}
-executor = ProcessPoolExecutor(max_workers=2)
+executor = ProcessPoolExecutor(max_workers=4)
 future_to_task_id = {}  # Future: task_id
 future_lock = threading.Lock()
 
-
 ############################################################################ Polling
+def format_timestamp_for_display(timestamp):
+    """Format timestamp from YYYYMMDDHHMMSS to YYYY-MM-DD HH:MM:SS"""
+    if not timestamp or len(timestamp) != 14:
+        return timestamp
+
+    try:
+        year = timestamp[:4]
+        month = timestamp[4:6]
+        day = timestamp[6:8]
+        hour = timestamp[8:10]
+        minute = timestamp[10:12]
+        second = timestamp[12:14]
+        return f"{year}-{month}-{day} {hour}:{minute}:{second}"
+    except:
+        return timestamp
+
 def process_ecl_task(command: str, data: dict):
     import os
     logger.info(f"Running ECL task with params: {data}")
     logger.info(f"Command to execute: {command}")
     logger.info(f"Working directory: {BASE_ECL_ENGINE}")
     logger.info(f"Current working directory: {os.getcwd()}")
-    # Check if main.py exists
-    main_py_path = os.path.join(BASE_ECL_ENGINE, "main.py")
+    logger.info(f"Environment variables: {dict(os.environ)}")
+    logger.info(f"Process ID: {os.getpid()}")
+    
+    # Check if main_ui.py exists
+    main_py_path = os.path.join(BASE_ECL_ENGINE, "main_ui.py")
     if not os.path.exists(main_py_path):
-        error_msg = f"main.py not found at {main_py_path}"
+        error_msg = f"main_ui.py not found at {main_py_path}"
         logger.error(error_msg)
-        return {'status': 'failed', 'error': error_msg}
-    # Check if main.py is executable
+        return {'status': 'Failed', 'error': error_msg}
+    
+    # Check if main_ui.py is executable
     if not os.access(main_py_path, os.R_OK):
-        error_msg = f"main.py is not readable at {main_py_path}"
+        error_msg = f"main_ui.py is not readable at {main_py_path}"
         logger.error(error_msg)
-        return {'status': 'failed', 'error': error_msg}
-    logger.info(f"main.py exists and is readable at {main_py_path}")
+        return {'status': 'Failed', 'error': error_msg}
+    
+    logger.info(f"main_ui.py exists and is readable at {main_py_path}")
+    
     try:
+        # Use subprocess.run with nohup to make ECL process independent of Gunicorn
+        # This is the simplest solution to prevent termination by Gunicorn restart
+        nohup_command = f"nohup {command} > /tmp/ecl_{os.getpid()}.log 2>&1"
+        
+        logger.info(f"Executing nohup command: {nohup_command}")
+        
         process = subprocess.run(
-            command,
+            nohup_command,
             shell=True,
             capture_output=True,
             text=True,
-            cwd=BASE_ECL_ENGINE
+            cwd=BASE_ECL_ENGINE,
+            env=os.environ.copy(),
+            timeout=21600  # 6 hours timeout
         )
+        
         logger.info(f"Process completed with return code: {process.returncode}")
         logger.info(f"STDOUT: {process.stdout}")
         logger.info(f"STDERR: {process.stderr}")
+        
         if process.returncode != 0:
             error_message = process.stderr or "Unknown error occurred"
             logger.error(f"ECL Engine failed with return code {process.returncode}")
             logger.error(f"Error message: {error_message}")
-            return {'status': 'failed', 'error': error_message, 'stdout': process.stdout, 'stderr': process.stderr, 'return_code': process.returncode}
+            return {'status': 'Failed', 'error': error_message, 'stdout': process.stdout, 'stderr': process.stderr, 'return_code': process.returncode}
         else:
             logger.info("ECL Engine completed successfully")
-            return {'status': 'completed', 'output': process.stdout}
+            return {'status': 'Completed', 'output': process.stdout}
+    
+    except subprocess.TimeoutExpired:
+        logger.error(f"ECL Engine process timed out after 6 hours")
+        return {'status': 'Failed', 'error': 'Process timed out after 6 hours'}
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
         logger.error(f"Exception in process_ecl_task: {str(e)}")
         logger.error(f"Full traceback: {error_details}")
-        return {'status': 'failed', 'error': str(e), 'traceback': error_details}
+        return {'status': 'Failed', 'error': str(e), 'traceback': error_details}
 
 def monitor_futures():
     while True:
@@ -130,21 +165,50 @@ def monitor_futures():
             with future_lock:
                 # Process completed tasks
                 for future, task_id in list(future_to_task_id.items()):
-                    if future.done() and task_status[task_id]['status'] == 'running':
+                    if future.done() and task_status[task_id]['status'] == 'Running':
                         try:
                             result = future.result()
                             task_status[task_id].update(result)
                             # Keep the task status in memory even after completion
                             # Don't remove from future_to_task_id to prevent 404 errors
                             logger.info(f"Task {task_id} completed with status: {result.get('status', 'unknown')}")
-                            update_eclengine_status_in_db(task_id, result.get('status', 'unknown'))
+                            
+                            # Check if this is a pre-run validation task
+                            if task_status[task_id].get('is_prerun_validation'):
+                                # Update pre-run validation status
+                                update_prerun_validation_status(task_id, result.get('status', 'unknown'))
+                                logger.info(f"Updated pre-run validation status for task {task_id} to {result.get('status', 'unknown')}")
+                            elif task_status[task_id].get('is_generate_report'):
+                                # Update reporting status
+                                update_reporting_status_in_db(task_id, result.get('status', 'unknown'))
+                                logger.info(f"Updated reporting status for task {task_id} to {result.get('status', 'unknown')}")
+                            else:
+                                # Update regular ECL engine status
+                                update_eclengine_status_in_db(task_id, result.get('status', 'unknown'))
+                        
                         except Exception as e:
                             logger.error(f"Error processing completed task {task_id}: {str(e)}")
-                            task_status[task_id].update({'status': 'failed', 'error': str(e)})
-                            update_eclengine_status_in_db(task_id, 'failed')
-                    elif task_status[task_id]['status'] == 'running':
-                        task_status[task_id]['status'] = 'running'
-                        update_eclengine_status_in_db(task_id, 'running')
+                            task_status[task_id].update({'status': 'Failed', 'error': str(e)})
+                            
+                            # Check if this is a pre-run validation task
+                            if task_status[task_id].get('is_prerun_validation'):
+                                update_prerun_validation_status(task_id, 'Failed')
+                                logger.info(f"Updated pre-run validation status for task {task_id} to failed")
+                            elif task_status[task_id].get('is_generate_report'):
+                                update_reporting_status_in_db(task_id, 'Failed')
+                                logger.info(f"Updated reporting status for task {task_id} to failed")
+                            else:
+                                update_eclengine_status_in_db(task_id, 'Failed')
+                    elif task_status[task_id]['status'] == 'Running':
+                        task_status[task_id]['status'] = 'Running'
+                        
+                        # Check if this is a pre-run validation task
+                        if task_status[task_id].get('is_prerun_validation'):
+                            update_prerun_validation_status(task_id, 'Running')
+                        elif task_status[task_id].get('is_generate_report'):
+                            update_reporting_status_in_db(task_id, 'Running')
+                        else:
+                            update_eclengine_status_in_db(task_id, 'Running')
         except Exception as e:
             logger.error(f"Error in monitor_futures: {str(e)}")
         time.sleep(1)
@@ -152,12 +216,12 @@ def monitor_futures():
 monitor_thread = threading.Thread(target=monitor_futures, daemon=True)
 monitor_thread.start()
 
-
 ############################################################################ DB-Connection
 DB_DSN = 'ECLSITFSDB'
 DB_USERNAME = 'eclappusr'
 DB_PASSWORD = 'Abcdef123456'
 DB_NAME = 'ey_test'
+
 #============================================= Test =============================================
 def test_db_connection():
     """Test database connection and log the result"""
@@ -177,7 +241,7 @@ def test_db_connection():
         conn.close()
         return True
     except Exception as e:
-        logger.error(f"Database connection failed: {str(e)}")
+        logger.error(f"Database connection Failed: {str(e)}")
         return False
 
 #============================================= Parameter =============================================
@@ -186,7 +250,7 @@ def create_ui_parameter_table():
     try:
         # First test connection
         if not test_db_connection():
-            logger.error("Cannot create table - database connection failed")
+            logger.error("Cannot create table - database connection Failed")
             return False
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
@@ -224,7 +288,83 @@ def create_ui_parameter_table():
     except Exception as e:
         logger.error(f"Error creating UI Parameter table: {str(e)}")
         return False
-
+ 
+def create_prerun_validation_table():
+    """Create the UI_prerun_validation_records table if it doesn't exist"""
+    try:
+        # First test connection
+        if not test_db_connection():
+            logger.error("Cannot create table - database connection Failed")
+            return False
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        # Check if table exists first in the specific database
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM [{DB_NAME}].INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME = 'UI_prerun_validation_records'
+        """)
+        table_exists = cursor.fetchone()[0] > 0
+        if table_exists:
+            logger.info("UI_prerun_validation_records table already exists")
+            # Check if new columns exist, if not add them
+            try:
+                cursor.execute(f"""
+                    SELECT COUNT(*)
+                    FROM [{DB_NAME}].INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'UI_prerun_validation_records' AND COLUMN_NAME = 'upload_timestamp'
+                """)
+                upload_timestamp_exists = cursor.fetchone()[0] > 0
+                
+                if not upload_timestamp_exists:
+                    logger.info("Adding upload_timestamp column to existing table")
+                    cursor.execute(f"""
+                        ALTER TABLE [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+                        ADD upload_timestamp NVARCHAR(20)
+                    """)
+                
+                cursor.execute(f"""
+                    SELECT COUNT(*)
+                    FROM [{DB_NAME}].INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'UI_prerun_validation_records' AND COLUMN_NAME = 'upload_type'
+                """)
+                upload_type_exists = cursor.fetchone()[0] > 0
+                
+                if not upload_type_exists:
+                    logger.info("Adding upload_type column to existing table")
+                    cursor.execute(f"""
+                        ALTER TABLE [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+                        ADD upload_type NVARCHAR(50)
+                    """)
+            
+            except Exception as e:
+                logger.warning(f"Could not add new columns to existing table: {str(e)}")
+            
+            return True
+        # Create UI_prerun_validation_records table in the specific database
+        logger.info("Creating UI_prerun_validation_records table...")
+        cursor.execute(f"""
+            CREATE TABLE [{DB_NAME}].[dbo].[UI_prerun_validation_records] (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                maker NVARCHAR(255) NOT NULL,
+                time DATETIME NOT NULL,
+                type NVARCHAR(50) NOT NULL,
+                category NVARCHAR(255),
+                action NVARCHAR(500) DEFAULT 'Pre-run Validation',
+                status NVARCHAR(20) DEFAULT 'Running',
+                task_id NVARCHAR(255) NOT NULL,
+                timestamp NVARCHAR(20) NOT NULL,
+                created_at DATETIME DEFAULT GETDATE(),
+                completed_at DATETIME NULL
+            )
+        """)
+        conn.close()
+        logger.info("UI_prerun_validation_records table created successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error creating UI_prerun_validation_records table: {str(e)}")
+        return False
+ 
 def save_parameter_record(maker, time, type_, category, action, status, checker, timestamp=None, suffix=None, file_path=None):
     """Save parameter/adjustment record to database"""
     try:
@@ -281,24 +421,63 @@ def copy_folder_to_approved(source_folder_path):
     try:
         if not os.path.exists(source_folder_path):
             logger.error(f"Source folder does not exist: {source_folder_path}")
-            return {'status': 'failed', 'error': 'Source folder does not exist'}
+            return {'status': 'Failed', 'error': 'Source folder does not exist'}
+        
         # Create approved folder if it doesn't exist
         os.makedirs(BASE_APPROVED_FOLDER, exist_ok=True)
+        
         # Get the folder name from the source path
         folder_name = os.path.basename(source_folder_path)
         destination_path = os.path.join(BASE_APPROVED_FOLDER, folder_name)
+        
         # Check if destination already exists
         if os.path.exists(destination_path):
             logger.warning(f"Destination folder already exists: {destination_path}")
-            return {'status': 'failed', 'error': 'Destination folder already exists'}
+            return {'status': 'Failed', 'error': 'Destination folder already exists'}
+        
         # Copy the entire folder
         shutil.copytree(source_folder_path, destination_path)
         logger.info(f"Successfully copied folder from {source_folder_path} to {destination_path}")
         return {'status': 'success', 'destination': destination_path}
+    
     except Exception as e:
         logger.error(f"Error copying folder to approved: {str(e)}")
-        return {'status': 'failed', 'error': str(e)}
+        return {'status': 'Failed', 'error': str(e)}
+ 
+def copy_folder_to_param_path(source_folder_path):
+    """
+    Copy files from approved folder to PARAM_PATH
+    """
+    try:
+        if not os.path.exists(source_folder_path):
+            logger.error(f"Source folder does not exist: {source_folder_path}")
+            return {'status': 'Failed', 'error': 'Source folder does not exist'}
 
+        # Read the config file to get PARAM_PATH
+        import json
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config = json.load(f)
+        param_path = config['RUN_SETTING']['PARAM_PATH']
+
+        # Create PARAM_PATH if it doesn't exist
+        os.makedirs(param_path, exist_ok=True)
+
+        copied_files = []
+        # Copy all files from the source folder to PARAM_PATH
+        for file_name in os.listdir(source_folder_path):
+            file_path = os.path.join(source_folder_path, file_name)
+            if os.path.isfile(file_path):
+                dest_path = os.path.join(param_path, file_name)
+                shutil.copy2(file_path, dest_path)
+                copied_files.append(file_name)
+                logger.info(f"Copied {file_name} to PARAM_PATH")
+
+        logger.info(f"Successfully copied {len(copied_files)} files from {source_folder_path} to {param_path}")
+        return {'status': 'success', 'copied_files': copied_files, 'param_path': param_path}
+
+    except Exception as e:
+        logger.error(f"Error copying folder to PARAM_PATH: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
 
 #============================================= Run Management =============================================
 def create_ui_eclengine_table():
@@ -330,6 +509,192 @@ def create_ui_eclengine_table():
     except Exception as e:
         logger.error(f"Error creating UI_eclengine_records table: {str(e)}")
         return False
+ 
+def create_reporting_records_table():
+    """Create the UI_reporting_records table if it doesn't exist"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            IF NOT EXISTS (
+                SELECT * FROM [{DB_NAME}].INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_NAME = 'UI_reporting_records'
+            )
+            BEGIN
+                CREATE TABLE [{DB_NAME}].[dbo].[UI_reporting_records] (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    task_id NVARCHAR(255) NOT NULL,
+                    maker NVARCHAR(255) NOT NULL,
+                    time DATETIME NOT NULL,
+                    settings NVARCHAR(MAX) NOT NULL,
+                    action NVARCHAR(500) NOT NULL,
+                    status NVARCHAR(50) NOT NULL,
+                    checker NVARCHAR(255) DEFAULT 'Waiting',
+                    original_timestamp NVARCHAR(50) NOT NULL,
+                    created_at DATETIME DEFAULT GETDATE(),
+                    completed_at DATETIME NULL
+                )
+            END
+        """)
+        conn.close()
+        logger.info("UI_reporting_records table checked/created successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error creating UI_reporting_records table: {str(e)}")
+        return False
+
+def save_reporting_record(task_id, maker, time, settings, action, status, checker, original_timestamp):
+    """Save reporting record to database"""
+    try:
+        create_reporting_records_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO [{DB_NAME}].[dbo].[UI_reporting_records]
+            (task_id, maker, time, settings, action, status, checker, original_timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (task_id, maker, time, settings, action, status, checker, original_timestamp))
+        conn.close()
+        logger.info(f"Successfully saved reporting record: {task_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving reporting record: {str(e)}")
+        return False
+
+def get_reporting_records():
+    """Get all reporting records from database"""
+    try:
+        create_reporting_records_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, task_id, maker, time, settings, action, status, checker, original_timestamp, created_at, completed_at
+            FROM [{DB_NAME}].[dbo].[UI_reporting_records]
+            ORDER BY created_at DESC
+        """)
+        records = []
+        for row in cursor.fetchall():
+            settings_dict = {}
+            try:
+                settings_dict = json.loads(row[4]) if row[4] else {}
+            except:
+                pass
+            records.append({
+                'id': row[0],
+                'task_id': row[1],
+                'maker': row[2],
+                'time': row[3].strftime('%Y-%m-%d %H:%M:%S') if row[3] else '',
+                'settings': settings_dict,
+                'action': row[5],
+                'status': row[6],
+                'checker': row[7],
+                'original_timestamp': row[8],
+                'created_at': row[9].strftime('%Y-%m-%d %H:%M:%S') if row[9] else '',
+                'completed_at': row[10].strftime('%Y-%m-%d %H:%M:%S') if row[10] else ''
+            })
+        conn.close()
+        return records
+    except Exception as e:
+        logger.error(f"Error getting reporting records: {str(e)}")
+        return []
+
+def update_reporting_status(task_id, status):
+    """Update reporting record status in database"""
+    try:
+        create_reporting_records_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        if status == 'Completed':
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+                SET status = ?, completed_at = GETDATE()
+                WHERE task_id = ?
+            """, (status, task_id))
+        else:
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+                SET status = ?
+                WHERE task_id = ?
+            """, (status, task_id))
+        conn.close()
+        logger.info(f"Updated reporting status for {task_id} to {status}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating reporting status: {str(e)}")
+        return False
+
+def get_reporting_record(task_id):
+    """Get reporting record by task_id"""
+    try:
+        create_reporting_records_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, task_id, maker, time, settings, action, status, checker, original_timestamp, created_at, completed_at
+            FROM [{DB_NAME}].[dbo].[UI_reporting_records]
+            WHERE task_id = ?
+        """, (task_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            settings_dict = {}
+            try:
+                settings_dict = json.loads(row[4]) if row[4] else {}
+            except:
+                pass
+            return {
+                'id': row[0],
+                'task_id': row[1],
+                'maker': row[2],
+                'time': row[3].strftime('%Y-%m-%d %H:%M:%S') if row[3] else '',
+                'settings': settings_dict,
+                'action': row[5],
+                'status': row[6],
+                'checker': row[7],
+                'original_timestamp': row[8],
+                'created_at': row[9].strftime('%Y-%m-%d %H:%M:%S') if row[9] else '',
+                'completed_at': row[10].strftime('%Y-%m-%d %H:%M:%S') if row[10] else ''
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Error getting reporting record: {str(e)}")
+        return None
+
+def get_eclengine_record_by_id(record_id):
+    """Get ECL engine record by ID"""
+    try:
+        create_ui_eclengine_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, maker, time, settings, action, status, checker, created_at
+            FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE id = ?
+        """, (record_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            settings_dict = {}
+            try:
+                settings_dict = json.loads(row[3]) if row[3] else {}
+            except:
+                pass
+            return {
+                'id': row[0],
+                'maker': row[1],
+                'time': row[2].strftime('%Y-%m-%d %H:%M:%S') if row[2] else '',
+                'settings': settings_dict,
+                'action': row[4],
+                'status': row[5],
+                'checker': row[6],
+                'created_at': row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else ''
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Error getting ECL engine record by ID: {str(e)}")
+        return None
 
 def save_eclengine_record(maker, time, settings, action, status, checker):
     """Save run management record to database"""
@@ -387,19 +752,84 @@ def update_eclengine_status_in_db(task_id, status):
         cursor.execute(f"""
             UPDATE [{DB_NAME}].[dbo].[UI_eclengine_records]
             SET status = ?
-            WHERE JSON_VALUE(settings, '$.task_id') = ?
+            WHERE settings IS NOT NULL
+            AND ISJSON(settings) = 1
+            AND JSON_VALUE(settings, '$.task_id') = ?
         """, (status, task_id))
+        
+        # Check if any rows were affected
+        rows_affected = cursor.rowcount
         conn.close()
-        logger.info(f"Updated DB status for task {task_id} to {status}")
+        
+        if rows_affected > 0:
+            logger.info(f"Updated DB status for task {task_id} to {status} ({rows_affected} row(s) affected)")
+        else:
+            logger.warning(f"No rows updated for task {task_id}. This might be a non-UI triggered run with NULL settings.")
+    
     except Exception as e:
         logger.error(f"Error updating ECL engine status in DB for {task_id}: {str(e)}")
 
+def update_reporting_status_in_db(task_id, status):
+    """
+    Update the status of a task in the UI_reporting_records table by task_id.
+    """
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        if status == 'Completed':
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+                SET status = ?, completed_at = GETDATE()
+                WHERE task_id = ?
+            """, (status, task_id))
+        else:
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+                SET status = ?
+                WHERE task_id = ?
+            """, (status, task_id))
+        
+        # Check if any rows were affected
+        rows_affected = cursor.rowcount
+        conn.close()
+        
+        if rows_affected > 0:
+            logger.info(f"Updated reporting status for task {task_id} to {status} ({rows_affected} row(s) affected)")
+        else:
+            logger.warning(f"No rows updated for reporting task {task_id}.")
+    
+    except Exception as e:
+        logger.error(f"Error updating reporting status for task {task_id}: {str(e)}")
+        # Log additional debugging information
+        try:
+            # Try to get the problematic record for debugging
+            conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                SELECT id, settings, status
+                FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+                WHERE settings IS NOT NULL
+                AND (ISJSON(settings) = 0 OR JSON_VALUE(settings, '$.task_id') = ?)
+            """, (task_id,))
+            debug_rows = cursor.fetchall()
+            conn.close()
+            
+            if debug_rows:
+                logger.error(f"Debug info - Found {len(debug_rows)} potentially problematic records:")
+                for row in debug_rows:
+                    logger.error(f"  ID: {row[0]}, Status: {row[2]}, Settings: {row[1]}")
+            else:
+                logger.error(f"Debug info - No records found with task_id {task_id}")
+        
+        except Exception as debug_e:
+            logger.error(f"Error during debug query: {str(debug_e)}")
+ 
 #============================================= Role Management =============================================
 def create_ui_user_maintenance_table():
     """Create the UI_user_maintenance table if it doesn't exist"""
     try:
         if not test_db_connection():
-            logger.error("Cannot create table - database connection failed")
+            logger.error("Cannot create table - database connection Failed")
             return False
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
@@ -432,7 +862,7 @@ def create_ui_user_maintenance_table():
             logger.info("UI_user_maintenance table created successfully")
         else:
             logger.info("UI_user_maintenance table already exists")
-            
+        
         conn.close()
         return True
     except Exception as e:
@@ -445,7 +875,7 @@ def create_ui_role_maintenance_table():
     """Create the UI_role_maintenance table if it doesn't exist"""
     try:
         if not test_db_connection():
-            logger.error("Cannot create table - database connection failed")
+            logger.error("Cannot create table - database connection Failed")
             return False
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
@@ -473,7 +903,7 @@ def create_ui_role_maintenance_table():
             logger.info("UI_role_maintenance table created successfully")
         else:
             logger.info("UI_role_maintenance table already exists")
-            
+        
         conn.close()
         return True
     except Exception as e:
@@ -486,7 +916,7 @@ def create_ui_function_maintenance_table():
     """Create the UI_function_maintenance table if it doesn't exist"""
     try:
         if not test_db_connection():
-            logger.error("Cannot create table - database connection failed")
+            logger.error("Cannot create table - database connection Failed")
             return False
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
@@ -514,7 +944,7 @@ def create_ui_function_maintenance_table():
             logger.info("UI_function_maintenance table created successfully")
         else:
             logger.info("UI_function_maintenance table already exists")
-            
+        
         conn.close()
         return True
     except Exception as e:
@@ -527,7 +957,7 @@ def create_ui_role_function_table(role_name):
     """Create a UI_role_function_<rolename> table if it doesn't exist and populate with all functions"""
     try:
         if not test_db_connection():
-            logger.error("Cannot create table - database connection failed")
+            logger.error("Cannot create table - database connection Failed")
             return False
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
@@ -579,7 +1009,7 @@ def create_ui_role_function_table(role_name):
                 current_time = datetime.now()
                 for function_name in missing_functions:
                     cursor.execute(f"""
-                        INSERT INTO [{DB_NAME}].[dbo].[{table_name}] 
+                        INSERT INTO [{DB_NAME}].[dbo].[{table_name}]
                         (function_name, status, updated_by, time)
                         VALUES (?, ?, ?, ?)
                     """, (function_name, 'Inactive', 'System', current_time))
@@ -589,7 +1019,7 @@ def create_ui_role_function_table(role_name):
                 logger.info(f"All functions already exist in {table_name}")
         else:
             logger.warning(f"No active functions found to populate {table_name} table")
-            
+        
         conn.close()
         return True
     except Exception as e:
@@ -605,7 +1035,7 @@ def save_user_record(user_name, login_name, default_role, updated_by, time, emai
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
         cursor.execute(f"""
-            INSERT INTO [{DB_NAME}].[dbo].[UI_user_maintenance] 
+            INSERT INTO [{DB_NAME}].[dbo].[UI_user_maintenance]
             (user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark))
@@ -680,21 +1110,21 @@ def save_role_record(role_name, status, updated_by, time):
         
         # Test database connection first
         if not test_db_connection():
-            logger.error("Database connection failed in save_role_record")
+            logger.error("Database connection Failed in save_role_record")
             return False
-            
+        
         # Create table if not exists
         table_created = create_ui_role_maintenance_table()
         if not table_created:
             logger.error("Failed to create UI_role_maintenance table")
             return False
-            
+        
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
         
         logger.info(f"Executing INSERT statement for role: {role_name}")
         cursor.execute(f"""
-            INSERT INTO [{DB_NAME}].[dbo].[UI_role_maintenance] 
+            INSERT INTO [{DB_NAME}].[dbo].[UI_role_maintenance]
             (role_name, status, updated_by, time)
             VALUES (?, ?, ?, ?)
         """, (role_name, status, updated_by, time))
@@ -768,7 +1198,7 @@ def save_function_record(function_name, status, updated_by, time):
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
         cursor.execute(f"""
-            INSERT INTO [{DB_NAME}].[dbo].[UI_function_maintenance] 
+            INSERT INTO [{DB_NAME}].[dbo].[UI_function_maintenance]
             (function_name, status, updated_by, time)
             VALUES (?, ?, ?, ?)
         """, (function_name, status, updated_by, time))
@@ -839,7 +1269,7 @@ def save_role_function_record(role_name, function_name, status, updated_by, time
         cursor = conn.cursor()
         table_name = f"UI_role_function_{role_name.replace(' ', '_').replace('-', '_')}"
         cursor.execute(f"""
-            INSERT INTO [{DB_NAME}].[dbo].[{table_name}] 
+            INSERT INTO [{DB_NAME}].[dbo].[{table_name}]
             (function_name, status, updated_by, time)
             VALUES (?, ?, ?, ?)
         """, (function_name, status, updated_by, time))
@@ -902,7 +1332,6 @@ def update_role_function_record(role_name, function_name, status, updated_by):
         logger.error(f"Error updating role-function record: {str(e)}")
         return False
 
-
 ############################################################################ Main-Functions
 #============================================= Parameter =============================================
 # Parameter: Upload File
@@ -916,6 +1345,9 @@ def upload_file():
     maker = request.form.get('maker', '')
     category = request.form.get('category', '')
     checker = request.form.get('checker', '')
+    auto_filename = request.form.get('auto_filename', '')  # Get auto-generated filename
+ 
+    logger.info(f"Upload request - file_type: '{file_type}', user_suffix: '{user_suffix}', maker: '{maker}', category: '{category}', auto_filename: '{auto_filename}'")
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     if file:
@@ -926,17 +1358,27 @@ def upload_file():
             # Get original file extension
             original_filename = file.filename
             file_extension = os.path.splitext(original_filename)[1] if '.' in original_filename else ''
-            # Generate folder name and filename based on file type and suffix
+            # Generate folder name based on file type and suffix
             if file_type == 'parameter':
                 folder_name = f"par_{timestamp}_{user_suffix}" if user_suffix else f"par_{timestamp}"
-                new_filename = f"par_{timestamp}_{user_suffix}{file_extension}" if user_suffix else f"par_{timestamp}{file_extension}"
+                # Use auto-generated filename if provided and not a zip file
+                if auto_filename and file_extension.lower() != '.zip':
+                    new_filename = auto_filename
+                else:
+                    new_filename = original_filename
             elif file_type == 'adjustment':
                 folder_name = f"adj_{timestamp}_{user_suffix}" if user_suffix else f"adj_{timestamp}"
-                new_filename = f"adj_{timestamp}_{user_suffix}{file_extension}" if user_suffix else f"adj_{timestamp}{file_extension}"
+                # Use auto-generated filename if provided and not a zip file
+                if auto_filename and file_extension.lower() != '.zip':
+                    new_filename = auto_filename
+                else:
+                    new_filename = original_filename
             else:
                 # Fallback to original filename if file type is unknown
                 folder_name = timestamp
                 new_filename = original_filename
+            
+            logger.info(f"Generated folder_name: '{folder_name}' for file_type: '{file_type}'")
             # Create new folder path using the generated folder name
             new_upload_folder = os.path.join(BASE_UPLOAD_FOLDER, folder_name)
             # Create folder if it doesn't exist
@@ -958,7 +1400,7 @@ def upload_file():
                             extracted_files.append(base_name)
                 # Write into DB
                 save_parameter_record(
-                    maker=maker or 'RMGUser_1',
+                    maker=maker,
                     time=now_dt,
                     type_=file_type,
                     category=category,
@@ -971,7 +1413,7 @@ def upload_file():
                 )
                 
                 # Log parameter update
-                log_parameter_update("Default", "Upload", file_type, new_upload_folder)
+                log_parameter_update(maker, "Upload", file_type, new_upload_folder)
                 
                 return jsonify({
                     'message': f'Zip file extracted. Files: {extracted_files}',
@@ -986,7 +1428,7 @@ def upload_file():
                 file.save(file_path)
                 # Write into DB
                 save_parameter_record(
-                    maker=maker or 'RMGUser_1',
+                    maker=maker,
                     time=now_dt,
                     type_=file_type,
                     category=category,
@@ -999,13 +1441,14 @@ def upload_file():
                 )
                 
                 # Log parameter update
-                log_parameter_update("Default", "Upload", file_type, new_upload_folder)
+                log_parameter_update(maker, "Upload", file_type, new_upload_folder)
                 
                 return jsonify({
-                    'message': f'File "{new_filename}" uploaded successfully',
+                    'message': f'File "{original_filename}" uploaded successfully as "{new_filename}" to folder "{folder_name}"',
                     'path': file_path,
                     'original_name': original_filename,
-                    'new_name': new_filename
+                    'new_name': new_filename,
+                    'folder_name': folder_name
                 }), 200
         except Exception as e:
             return jsonify({'error': f'Error saving file: {str(e)}'}), 500
@@ -1029,7 +1472,7 @@ def update_approval_status():
         data = request.get_json()
         record_id = data.get('id')
         new_status = data.get('status', 'Approved')
-        checker = data.get('checker', 'RMGUser_2')
+        checker = data.get('checker', '')
         
         # Get the file_path from the database before updating
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
@@ -1055,28 +1498,41 @@ def update_approval_status():
             WHERE id = ?
         """, (new_status, checker, record_id))
         conn.close()
-        
-        # If the status is being changed to 'Approved', copy the folder to approved directory
+       
+        # If the status is being changed to 'Approved', copy the folder to approved directory and then to PARAM_PATH
         if new_status == 'Approved':
             # Log parameter approval
-            log_parameter_update("Default", "Approve", file_type, file_path)
-            
+            log_parameter_update(checker, "Approve", file_type, file_path)
+        
+            # Step 1: Copy to approved directory
             copy_result = copy_folder_to_approved(file_path)
-            if copy_result['status'] == 'success':
-                logger.info(f"Record {record_id} approved and folder copied to approved directory")
+            if copy_result['status'] != 'success':
+                logger.error(f"Failed to copy folder to approved directory for record {record_id}: {copy_result['error']}")
                 return jsonify({
-                    'message': 'Status updated successfully and folder copied to approved directory',
-                    'copy_result': copy_result
+                    'message': 'Status updated successfully but Failed to copy folder to approved directory',
+                    'copy_error': copy_result['error']
+                }), 500
+        
+            # Step 2: Copy from approved directory to PARAM_PATH
+            approved_folder_path = copy_result['destination']
+            copy_to_param_result = copy_folder_to_param_path(approved_folder_path)
+            if copy_to_param_result['status'] == 'success':
+                logger.info(f"Record {record_id} approved, folder copied to approved directory and files copied to PARAM_PATH")
+                return jsonify({
+                    'message': 'Status updated successfully, folder copied to approved directory and files copied to PARAM_PATH',
+                    'copy_result': copy_result,
+                    'param_copy_result': copy_to_param_result
                 }), 200
             else:
-                logger.error(f"Failed to copy folder for approved record {record_id}: {copy_result['error']}")
+                logger.error(f"Failed to copy files to PARAM_PATH for approved record {record_id}: {copy_to_param_result['error']}")
                 return jsonify({
-                    'message': 'Status updated successfully but failed to copy folder to approved directory',
-                    'copy_error': copy_result['error']
-                }), 200
+                    'message': 'Status updated successfully, folder copied to approved directory but Failed to copy files to PARAM_PATH',
+                    'copy_result': copy_result,
+                    'param_copy_error': copy_to_param_result['error']
+                }), 500
         else:
             return jsonify({'message': 'Status updated successfully'}), 200
-            
+    
     except Exception as e:
         logger.error(f"Error updating approval status: {str(e)}")
         return jsonify({'error': f'Error updating approval status: {str(e)}'}), 500
@@ -1121,20 +1577,21 @@ def download_files(record_id):
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
         cursor.execute(f"""
-            SELECT file_path FROM [{DB_NAME}].[dbo].[UI_Parameter_records] WHERE id = ?
+            SELECT file_path, maker FROM [{DB_NAME}].[dbo].[UI_Parameter_records] WHERE id = ?
         """, (record_id,))
         result = cursor.fetchone()
         conn.close()
         if not result or not result[0]:
             return jsonify({'error': 'File path not found'}), 404
         file_path = result[0]
+        maker = result[1] if result[1] else 'Unknown User'
         # Check if directory exists
         if not os.path.exists(file_path):
             return jsonify({'error': 'File directory not found'}), 404
         
         # Log download activity
         folder_name = os.path.basename(file_path)
-        log_download_activity("Default", "Parameter", f"Parameter files from {folder_name}")
+        log_download_activity(maker, "Parameter", f"Parameter files from {folder_name}")
         
         # Create zip file with all files in the directory
         import zipfile
@@ -1156,6 +1613,426 @@ def download_files(record_id):
         )
     except Exception as e:
         return jsonify({'error': f'Error downloading files: {str(e)}'}), 500
+ 
+#============================================= Pre-run Validation =============================================
+def save_prerun_validation_record(task_id: str, maker: str, time: datetime, type_: str, category: str, timestamp: str, upload_timestamp: str = '', upload_type: str = ''):
+    """Save pre-run validation record to database"""
+    try:
+        create_prerun_validation_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+            (task_id, maker, time, type, category, action, status, timestamp, upload_timestamp, upload_type)
+            VALUES (?, ?, ?, ?, ?, 'Pre-run Validation', 'running', ?, ?, ?)
+        """, (task_id, maker, time, type_, category, timestamp, upload_timestamp, upload_type))
+        conn.close()
+        logger.info(f"Successfully saved pre-run validation record: {task_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving pre-run validation record: {str(e)}")
+        return False
+
+def update_prerun_validation_status(task_id: str, status: str):
+    """Update pre-run validation status in database"""
+    try:
+        create_prerun_validation_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        if status == 'Completed':
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+                SET status = ?, completed_at = GETDATE()
+                WHERE task_id = ?
+            """, (status, task_id))
+        else:
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+                SET status = ?
+                WHERE task_id = ?
+            """, (status, task_id))
+        conn.close()
+        logger.info(f"Updated pre-run validation status for {task_id} to {status}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating pre-run validation status: {str(e)}")
+        return False
+
+def get_prerun_validation_record(task_id: str):
+    """Get pre-run validation record by task_id"""
+    try:
+        create_prerun_validation_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, task_id, maker, time, type, category, action, status, timestamp, upload_timestamp, upload_type, created_at, completed_at
+            FROM [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+            WHERE task_id = ?
+        """, (task_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'id': row[0],
+                'task_id': row[1],
+                'maker': row[2],
+                'time': row[3].strftime('%Y-%m-%d %H:%M:%S') if row[3] else '',
+                'type': row[4],
+                'category': row[5] or '',
+                'action': row[6],
+                'status': row[7],
+                'timestamp': row[8],
+                'upload_timestamp': row[9] or '',
+                'upload_type': row[10] or '',
+                'created_at': row[11].strftime('%Y-%m-%d %H:%M:%S') if row[11] else '',
+                'completed_at': row[12].strftime('%Y-%m-%d %H:%M:%S') if row[12] else ''
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Error getting pre-run validation record: {str(e)}")
+        return None
+
+@app.route('/start_prerun_validation', methods=['POST'])
+def start_prerun_validation():
+    """Start pre-run validation for a parameter or adjustment file"""
+    try:
+        data = request.get_json()
+        parameter_folder = data.get('parameterFolder', '')
+        adjustment_folder = data.get('adjustmentFolder', '')
+        maker = data.get('maker', 'Unknown User')
+        ui_timestamp = data.get('ui_timestamp', '')
+        upload_timestamp = data.get('upload_timestamp', '')  # Original upload timestamp
+        upload_type = data.get('upload_type', '')  # Original upload type
+        
+        # Validate input - must have either parameter or adjustment, not both
+        if not parameter_folder and not adjustment_folder:
+            return jsonify({'error': 'Must specify either parameter folder or adjustment folder'}), 400
+        if parameter_folder and adjustment_folder:
+            return jsonify({'error': 'Cannot specify both parameter and adjustment folders'}), 400
+        
+        # Log the validation request
+        logger.info(f"Starting pre-run validation for parameter: {parameter_folder}, adjustment: {adjustment_folder}")
+        logger.info(f"Maker: {maker}, UI timestamp: {ui_timestamp}")
+        
+        # Generate validation config file
+        config_result = generate_prerun_validation_config_file(
+            parameter_folder=parameter_folder,
+            adjustment_folder=adjustment_folder,
+            ui_timestamp=ui_timestamp
+        )
+        
+        if config_result['status'] == 'Failed':
+            return jsonify({'error': f'Failed to generate validation config: {config_result["error"]}'}), 500
+        
+        # Use the new config file path and timestamp
+        new_config_path = config_result['config_path']
+        timestamp = config_result.get('timestamp', '')
+        
+        # Copy selected files to PARAM_PATH for validation
+        copy_result = copy_files_to_param_path(parameter_folder, adjustment_folder)
+        if copy_result['status'] == 'Failed':
+            return jsonify({
+                'error': f'Failed to copy files to PARAM_PATH: {copy_result["error"]}'
+            }), 500
+        
+        # Generate task ID
+        task_id = str(uuid.uuid4())
+        
+        # Get current time for the record
+        now_dt = datetime.now()
+        
+        # Get category from the upload record
+        category = ''
+        try:
+            conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+            cursor = conn.cursor()
+            # Find the upload record by folder name
+            folder_name = parameter_folder if parameter_folder else adjustment_folder
+            cursor.execute(f"""
+                SELECT category FROM [{DB_NAME}].[dbo].[UI_Parameter_records]
+                WHERE action LIKE ?
+                ORDER BY time DESC
+            """, (f'%{folder_name}%',))
+            row = cursor.fetchone()
+            if row:
+                category = row[0] or ''
+            conn.close()
+        except Exception as e:
+            logger.warning(f"Could not get category from upload record: {str(e)}")
+            category = ''
+        
+        # Save validation record to database
+        save_result = save_prerun_validation_record(
+            task_id=task_id,
+            maker=maker,  # Use current logged-in user as maker
+            time=now_dt,
+            type_=upload_type,  # Use original upload type
+            category=category,  # Use category from upload record
+            timestamp=timestamp,
+            upload_timestamp=upload_timestamp,  # Store original upload timestamp
+            upload_type=upload_type  # Store original upload type
+        )
+        
+        if not save_result:
+            return jsonify({'error': 'Failed to save validation record to database'}), 500
+        
+        # Prepare command with new validation config file
+        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
+        logger.info(f"Executing pre-run validation command: {command}")
+        logger.info(f"Working directory: {BASE_ECL_ENGINE}")
+        logger.info(f"Using new validation config file: {new_config_path}")
+        logger.info(f"Output will be saved to new folder: {timestamp}")
+        
+        # Initialize task status
+        task_status[task_id] = {
+            'status': 'Running',
+            'data': data,
+            'copied_files': copy_result.get('copied_files', []),
+            'config_file': new_config_path,
+            'timestamp': timestamp,
+            'created_at': datetime.now().isoformat(),
+            'command': command,
+            'is_prerun_validation': True
+        }
+        
+        with future_lock:
+            future = executor.submit(process_ecl_task, command, data)
+            future_to_task_id[future] = task_id
+        
+        return jsonify({
+            'task_id': task_id,
+            'status': 'pending',
+            'timestamp': timestamp,
+            'config_file': new_config_path,
+            'copied_files': copy_result.get('copied_files', [])
+        }), 202
+    
+    except Exception as e:
+        logger.error(f"Error starting pre-run validation: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Full error traceback: {error_details}")
+        return jsonify({
+            'error': str(e),
+            'traceback': error_details
+        }), 500
+
+@app.route('/prerun_validation_status/<task_id>', methods=['GET'])
+def get_prerun_validation_status(task_id):
+    """Get pre-run validation status by task_id"""
+    try:
+        # First check task_status in memory
+        if task_id in task_status:
+            memory_status = task_status[task_id]
+            return jsonify({
+                'status': memory_status['status'],
+                'timestamp': memory_status.get('timestamp', ''),
+                'config_file': memory_status.get('config_file', '')
+            })
+        
+        # If not in memory, check database
+        record = get_prerun_validation_record(task_id)
+        if record:
+            return jsonify({
+                'status': record['status'],
+                'timestamp': record['timestamp'],
+                'config_file': f"run_config_file_{record['timestamp']}.json"
+            })
+        
+        return jsonify({'error': 'Task not found'}), 404
+    
+    except Exception as e:
+        logger.error(f"Error getting pre-run validation status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/download_prerun_validation_logs/<task_id>', methods=['GET'])
+def download_prerun_validation_logs(task_id):
+    """Download pre-run validation logs (01_log folder)"""
+    try:
+        # Get validation record from database
+        record = get_prerun_validation_record(task_id)
+        if not record:
+            return jsonify({'error': 'Validation record not found'}), 404
+        
+        # Construct path to 01_log folder
+        timestamp = record['timestamp']
+        base_output_path = '/u01/Apps/EY_working/99_data/03_output_folder'
+        timestamp_folder = f"{base_output_path}/{timestamp}"
+        
+        # Look for the automatically created folder structure
+        log_folder_path = None
+        if os.path.exists(timestamp_folder):
+            for item in os.listdir(timestamp_folder):
+                item_path = os.path.join(timestamp_folder, item)
+                if os.path.isdir(item_path) and '_' in item:
+                    # Check if this directory contains 01_log
+                    log_path = os.path.join(item_path, '01_log')
+                    if os.path.exists(log_path):
+                        log_folder_path = log_path
+                        break
+        
+        if not log_folder_path:
+            return jsonify({'error': f'Log folder not found for timestamp: {timestamp}'}), 404
+        
+        # Create zip file of logs
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(log_folder_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arc_name = os.path.relpath(file_path, log_folder_path)
+                    zip_file.write(file_path, arc_name)
+        
+        zip_buffer.seek(0)
+        
+        # Log download activity
+        log_download_activity(record['maker'], "Parameter", f"Pre-run validation logs for {timestamp}")
+        
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'prerun_validation_logs_{timestamp}.zip'
+        )
+    
+    except Exception as e:
+        logger.error(f"Error downloading pre-run validation logs: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_prerun_validation_records', methods=['GET'])
+def get_prerun_validation_records():
+    """Get all pre-run validation records"""
+    try:
+        create_prerun_validation_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, task_id, maker, time, type, category, action, status, timestamp, upload_timestamp, upload_type, created_at, completed_at
+            FROM [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+            ORDER BY created_at DESC
+        """)
+        
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'task_id': row[1],
+                'maker': row[2],
+                'time': row[3].strftime('%Y-%m-%d %H:%M:%S') if row[3] else '',
+                'type': row[4],
+                'category': row[5] or '',
+                'action': row[6],
+                'status': row[7],
+                'timestamp': row[8],
+                'upload_timestamp': row[9] or '',
+                'upload_type': row[10] or '',
+                'created_at': row[11].strftime('%Y-%m-%d %H:%M:%S') if row[11] else '',
+                'completed_at': row[12].strftime('%Y-%m-%d %H:%M:%S') if row[12] else ''
+            })
+        
+        conn.close()
+        return jsonify({'records': records})
+    
+    except Exception as e:
+        logger.error(f"Error getting pre-run validation records: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/get_prerun_validation_by_folder/<folder_name>', methods=['GET'])
+def get_prerun_validation_by_folder(folder_name):
+    """Get pre-run validation record by folder name"""
+    try:
+        # Ensure table exists first
+        create_prerun_validation_table()
+        
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        # Search by either parameter_folder or adjustment_folder
+        cursor.execute(f"""
+            SELECT task_id, parameter_folder, adjustment_folder, timestamp, status, maker, created_at, completed_at
+            FROM [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+            WHERE parameter_folder = ? OR adjustment_folder = ?
+            ORDER BY created_at DESC
+        """, (folder_name, folder_name))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return jsonify({
+                'record': {
+                    'task_id': row[0],
+                    'parameter_folder': row[1],
+                    'adjustment_folder': row[2],
+                    'timestamp': row[3],
+                    'status': row[4],
+                    'maker': row[5],
+                    'created_at': row[6].strftime('%Y-%m-%d %H:%M:%S') if row[6] else '',
+                    'completed_at': row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else ''
+                }
+            })
+        
+        return jsonify({'record': None})
+    
+    except Exception as e:
+        logger.error(f"Error getting pre-run validation record by folder: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/download_prerun_validation_report/<task_id>', methods=['GET'])
+def download_prerun_validation_report(task_id):
+    """Download pre-run validation report (04_report folder)"""
+    try:
+        # Get validation record from database
+        record = get_prerun_validation_record(task_id)
+        if not record:
+            return jsonify({'error': 'Validation record not found'}), 404
+
+
+        # Construct path to 04_report folder
+        timestamp = record['timestamp']
+        base_output_path = '/u01/Apps/EY_working/99_data/03_output_folder'
+        timestamp_folder = f"{base_output_path}/{timestamp}"
+        
+        # Look for the automatically created folder structure
+        report_folder_path = None
+        if os.path.exists(timestamp_folder):
+            for item in os.listdir(timestamp_folder):
+                item_path = os.path.join(timestamp_folder, item)
+                if os.path.isdir(item_path) and '_' in item:
+                    # Check if this directory contains 04_report
+                    report_path = os.path.join(item_path, '04_report')
+                    if os.path.exists(report_path):
+                        report_folder_path = report_path
+                        break
+        
+        if not report_folder_path:
+            return jsonify({'error': f'Report folder not found for timestamp: {timestamp}'}), 404
+        
+        # Create zip file of reports
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(report_folder_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arc_name = os.path.relpath(file_path, report_folder_path)
+                    zip_file.write(file_path, arc_name)
+        
+        zip_buffer.seek(0)
+        
+        # Log download activity
+        log_download_activity(record['maker'], "Parameter", f"Pre-run validation report for {timestamp}")
+        
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'prerun_validation_report_{timestamp}.zip'
+        )
+    
+    except Exception as e:
+        logger.error(f"Error downloading pre-run validation report: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 #============================================= Run Management =============================================
 # Run Management: Select Parameters and Data Correction
@@ -1244,10 +2121,10 @@ def copy_files_to_param_path(selected_parameters: str, selected_corrections: str
         return {'status': 'success', 'copied_files': copied_files}
     except Exception as e:
         logger.error(f"Error copying files to PARAM_PATH: {str(e)}")
-        return {'status': 'failed', 'error': str(e)}
-
+        return {'status': 'Failed', 'error': str(e)}
 # Run Management: Generate new config file
-def generate_new_config_file(reporting_date: str, run_mode: str, country: str, ui_timestamp: str = None):
+
+def generate_new_config_file(reporting_date: str, run_mode: str, ui_timestamp: str = None):
     """
     Generate a new config file with user-selected parameters
     """
@@ -1264,14 +2141,11 @@ def generate_new_config_file(reporting_date: str, run_mode: str, country: str, u
             config['RUN_SETTING']['DATA_YYMM'] = int(data_yymm)
         if run_mode:
             config['RUN_SETTING']['RUN_MODE'] = str(run_mode)
-        if country:
-            config['RUN_SETTING']['COUNTRY'] = country
         
-        # Use UI timestamp if provided, otherwise generate new one
-        if ui_timestamp:
-            timestamp = ui_timestamp
-        else:
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        # Use UI timestamp (must be provided for consistency)
+        if not ui_timestamp:
+            return {'status': 'Failed', 'error': 'UI timestamp is required for consistency'}
+        timestamp = ui_timestamp
         
         # Modify OUTPUT_PATH to include timestamp subfolder
         base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
@@ -1292,7 +2166,7 @@ def generate_new_config_file(reporting_date: str, run_mode: str, country: str, u
             logger.info(f"Created/verified output folder: {new_output_path}")
         except Exception as e:
             logger.error(f"Failed to create output folder {new_output_path}: {str(e)}")
-            return {'status': 'failed', 'error': f'Failed to create output folder: {str(e)}'}
+            return {'status': 'Failed', 'error': f'Failed to create output folder: {str(e)}'}
         
         new_config_filename = f'run_config_file_{timestamp}.json'
         new_config_path = os.path.join(BASE_ECL_ENGINE, new_config_filename)
@@ -1303,11 +2177,65 @@ def generate_new_config_file(reporting_date: str, run_mode: str, country: str, u
         return {'status': 'success', 'config_path': new_config_path, 'timestamp': timestamp}
     except Exception as e:
         logger.error(f"Error generating new config file: {str(e)}")
-        return {'status': 'failed', 'error': str(e)}
-
-def modify_existing_config_file(config_filename: str, resume_run_mode: str):
+        return {'status': 'Failed', 'error': str(e)}
+ 
+def copy_original_data_only(original_timestamp: str, new_timestamp: str, base_output_path: str):
     """
-    Modify an existing config file for resume run by updating RUN_MODE
+    Copy only the original data (reportingdate_yymmdd folder) to new location
+    This ensures data isolation by not copying any derived results (reports, resumes)
+    """
+    try:
+        import shutil
+        
+        # Construct paths
+        if '/03_output_folder' in base_output_path:
+            base_path = base_output_path.split('/03_output_folder')[0]
+            original_timestamp_path = f"{base_path}/03_output_folder/{original_timestamp}"
+            new_timestamp_path = f"{base_path}/03_output_folder/{new_timestamp}"
+        else:
+            original_timestamp_path = f"{base_output_path}/{original_timestamp}"
+            new_timestamp_path = f"{base_output_path}/{new_timestamp}"
+        
+        # Create new timestamp folder
+        os.makedirs(new_timestamp_path, exist_ok=True)
+        
+        # Find the folder containing underscore (reportingdate_yymmdd format) in original timestamp folder
+        if not os.path.exists(original_timestamp_path):
+            return {'status': 'Failed', 'error': f'Original timestamp folder does not exist: {original_timestamp_path}'}
+        
+        # Look for folder containing underscore (reportingdate_yymmdd format)
+        reporting_date_folder = None
+        available_items = []
+        for item in os.listdir(original_timestamp_path):
+            item_path = os.path.join(original_timestamp_path, item)
+            available_items.append(item)
+            if os.path.isdir(item_path) and '_' in item:
+                # This looks like a reportingdate_yymmdd folder (contains underscore)
+                reporting_date_folder = item
+                break
+        
+        if not reporting_date_folder:
+            logger.error(f"No folder with underscore found in {original_timestamp_path}")
+            logger.error(f"Available items in {original_timestamp_path}: {available_items}")
+            return {'status': 'Failed', 'error': f'No folder with underscore found in {original_timestamp_path}. Available items: {available_items}'}
+        
+        # Copy only the folder containing underscore (reportingdate_yymmdd format)
+        original_reporting_path = os.path.join(original_timestamp_path, reporting_date_folder)
+        new_reporting_path = os.path.join(new_timestamp_path, reporting_date_folder)
+        
+        logger.info(f"Copying original data from {original_reporting_path} to {new_reporting_path}")
+        shutil.copytree(original_reporting_path, new_reporting_path)
+        
+        logger.info(f"Successfully copied original data to: {new_reporting_path}")
+        return {'status': 'success', 'copied_path': new_reporting_path}
+    
+    except Exception as e:
+        logger.error(f"Failed to copy original data: {str(e)}")
+        return {'status': 'Failed', 'error': f'Failed to copy original data: {str(e)}'}
+ 
+def generate_resume_config_file(config_filename: str, resume_run_mode: str, ui_timestamp: str = None):
+    """
+    Generate a new config file for resume run with independent output path
     """
     try:
         # Construct the full path to the existing config file
@@ -1315,58 +2243,245 @@ def modify_existing_config_file(config_filename: str, resume_run_mode: str):
         
         # Check if the config file exists
         if not os.path.exists(existing_config_path):
-            return {'status': 'failed', 'error': f'Config file not found: {config_filename}'}
+            return {'status': 'Failed', 'error': f'Config file not found: {config_filename}'}
         
         # Read the existing config file
         import json
         with open(existing_config_path, 'r') as f:
             config = json.load(f)
         
-        # Update only the RUN_MODE, keep everything else the same
+        # Update RUN_MODE for resume run
         if resume_run_mode:
             config['RUN_SETTING']['RUN_MODE'] = str(resume_run_mode)
         
-        # Write the modified config back to the same file
-        with open(existing_config_path, 'w') as f:
+        # Use UI timestamp (must be provided for consistency)
+        if not ui_timestamp:
+            return {'status': 'Failed', 'error': 'UI timestamp is required for consistency'}
+        timestamp = ui_timestamp
+        
+        # Extract the timestamp from the original config filename
+        original_timestamp = config_filename.replace('run_config_file_', '').replace('.json', '')
+        
+        # Get the original output path
+        original_output_path = config['RUN_SETTING']['OUTPUT_PATH']
+        logger.info(f"Original output path for resume: {original_output_path}")
+        
+        # Verify the original output folder exists
+        if not os.path.exists(original_output_path):
+            return {'status': 'Failed', 'error': f'Original output folder does not exist: {original_output_path}'}
+        
+        # Create new OUTPUT_PATH with resume timestamp
+        base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
+        # Extract the base path without any existing timestamp folders
+        if '/03_output_folder' in base_output_path:
+            base_path = base_output_path.split('/03_output_folder')[0]
+            new_output_path = f"{base_path}/03_output_folder/{timestamp}"
+        else:
+            # Fallback if path structure is different
+            new_output_path = f"{base_path}/{timestamp}"
+        
+        # Copy only the original data (reportingdate_yymmdd folder) to ensure data isolation
+        copy_result = copy_original_data_only(original_timestamp, timestamp, base_output_path)
+        if copy_result['status'] == 'Failed':
+            return {'status': 'Failed', 'error': f'Failed to copy original data for resume: {copy_result["error"]}'}
+        
+        config['RUN_SETTING']['OUTPUT_PATH'] = new_output_path
+        logger.info(f"Modified OUTPUT_PATH for resume run to: {new_output_path}")
+        
+        # Create new config file with resume timestamp
+        new_config_filename = f'run_config_file_{timestamp}.json'
+        new_config_path = os.path.join(BASE_ECL_ENGINE, new_config_filename)
+        
+        # Write the new resume config file
+        with open(new_config_path, 'w') as f:
             json.dump(config, f, indent=2)
         
-        logger.info(f"Modified existing config file: {existing_config_path} with RUN_MODE: {resume_run_mode}")
-        return {'status': 'success', 'config_path': existing_config_path}
+        logger.info(f"Generated new resume config file: {new_config_path}")
+        return {'status': 'success', 'config_path': new_config_path, 'timestamp': timestamp}
     except Exception as e:
-        logger.error(f"Error modifying existing config file: {str(e)}")
-        return {'status': 'failed', 'error': str(e)}
-
+        logger.error(f"Error generating resume config file: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+ 
+def generate_report_config_file(config_filename: str, report_run_mode: str, ui_timestamp: str = None):
+    """
+    Generate a new config file for report generation that copies the original output folder
+    """
+    try:
+        # Construct the full path to the existing config file
+        existing_config_path = os.path.join(BASE_ECL_ENGINE, config_filename)
+        
+        # Check if the config file exists
+        if not os.path.exists(existing_config_path):
+            return {'status': 'Failed', 'error': f'Config file not found: {config_filename}'}
+        
+        # Read the existing config file
+        import json
+        with open(existing_config_path, 'r') as f:
+            config = json.load(f)
+        
+        # Update RUN_MODE for report generation (should be 6)
+        if report_run_mode:
+            config['RUN_SETTING']['RUN_MODE'] = str(report_run_mode)
+        
+        # Extract the timestamp from the original config filename
+        original_timestamp = config_filename.replace('run_config_file_', '').replace('.json', '')
+        
+        # Get the original output path
+        original_output_path = config['RUN_SETTING']['OUTPUT_PATH']
+        logger.info(f"Original output path: {original_output_path}")
+        
+        # Verify the original output folder exists
+        if not os.path.exists(original_output_path):
+            return {'status': 'Failed', 'error': f'Original output folder does not exist: {original_output_path}'}
+        
+        # Use UI timestamp (must be provided for consistency)
+        if not ui_timestamp:
+            return {'status': 'Failed', 'error': 'UI timestamp is required for consistency'}
+        new_timestamp = ui_timestamp
+        
+        # Create new output path for the copied folder
+        base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
+        if '/03_output_folder' in base_output_path:
+            base_path = base_output_path.split('/03_output_folder')[0]
+            new_output_path = f"{base_path}/03_output_folder/{new_timestamp}"
+        else:
+            # Fallback if path structure is different
+            new_output_path = f"{base_path}/{new_timestamp}"
+        
+        # Copy only the original data (reportingdate_yymmdd folder) to ensure data isolation
+        copy_result = copy_original_data_only(original_timestamp, new_timestamp, base_output_path)
+        if copy_result['status'] == 'Failed':
+            return {'status': 'Failed', 'error': f'Failed to copy original data for report: {copy_result["error"]}'}
+        
+        # Update the config to use the new output path
+        config['RUN_SETTING']['OUTPUT_PATH'] = new_output_path
+        logger.info(f"Updated OUTPUT_PATH for report generation to: {new_output_path}")
+        
+        # Create new config file with report timestamp
+        new_config_filename = f'run_config_file_{new_timestamp}.json'
+        new_config_path = os.path.join(BASE_ECL_ENGINE, new_config_filename)
+        
+        # Write the new report config file
+        with open(new_config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        logger.info(f"Generated new report config file: {new_config_path}")
+        logger.info(f"Report will use copied output folder: {new_timestamp}")
+        return {'status': 'success', 'config_path': new_config_path, 'timestamp': new_timestamp}
+    except Exception as e:
+        logger.error(f"Error generating report config file: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+ 
+def generate_report_config_file_from_record(record_id, ui_timestamp):
+    """
+    Automatically generate report config file from review record
+    Inherits all previously modified functions: timestamp consistency and data isolation
+    """
+    try:
+        # 1. Get original record information
+        original_record = get_eclengine_record_by_id(record_id)
+        if not original_record:
+            return {'status': 'Failed', 'error': 'Original record not found'}
+        
+        # 2. Build original config filename
+        original_timestamp = original_record['settings'].get('timestamp', '')
+        if not original_timestamp:
+            return {'status': 'Failed', 'error': 'Original timestamp not found in record settings'}
+        
+        original_config_filename = f"run_config_file_{original_timestamp}.json"
+        
+        # 3. Use our modified function to ensure all functionality is preserved
+        config_result = generate_report_config_file(
+            config_filename=original_config_filename,
+            report_run_mode='6',  # Fixed to 6
+            ui_timestamp=ui_timestamp  # Use UI timestamp to ensure consistency
+        )
+        
+        # 4. generate_report_config_file internally will:
+        #    - Validate UI timestamp exists
+        #    - Call copy_original_data_only for data isolation
+        #    - Copy only the original reportingdate_yymmdd folder
+        
+        return config_result
+    
+    except Exception as e:
+        logger.error(f"Error generating report config from record: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+ 
+def generate_prerun_validation_config_file(parameter_folder: str = None, adjustment_folder: str = None, ui_timestamp: str = None):
+    """
+    Generate a new config file for pre-run validation with fixed settings
+    """
+    try:
+        # Read the original config file
+        import json
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config = json.load(f)
+        
+        # Fixed settings for pre-run validation
+        config['RUN_SETTING']['RUN_MODE'] = '2'
+        config['RUN_SETTING']['SANITY_CHECK_MODE'] = '2.1'
+        
+        # Generate new timestamp for validation run
+        if ui_timestamp:
+            timestamp = ui_timestamp
+        else:
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        
+        # Create new OUTPUT_PATH with validation timestamp
+        base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
+        # Extract the base path without any existing timestamp folders
+        if '/03_output_folder' in base_output_path:
+            base_path = base_output_path.split('/03_output_folder')[0]
+            new_output_path = f"{base_path}/03_output_folder/{timestamp}"
+        else:
+            # Fallback if path structure is different
+            new_output_path = f"{base_path}/{timestamp}"
+        
+        config['RUN_SETTING']['OUTPUT_PATH'] = new_output_path
+        logger.info(f"Modified OUTPUT_PATH for pre-run validation to: {new_output_path}")
+        
+        # Create the new timestamp folder for validation run
+        try:
+            os.makedirs(new_output_path, exist_ok=True)
+            logger.info(f"Created/verified pre-run validation output folder: {new_output_path}")
+        except Exception as e:
+            logger.error(f"Failed to create pre-run validation output folder {new_output_path}: {str(e)}")
+            return {'status': 'Failed', 'error': f'Failed to create pre-run validation output folder: {str(e)}'}
+        
+        # Create new config file with validation timestamp
+        new_config_filename = f'run_config_file_{timestamp}.json'
+        new_config_path = os.path.join(BASE_ECL_ENGINE, new_config_filename)
+        
+        # Write the new validation config file
+        with open(new_config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        logger.info(f"Generated new pre-run validation config file: {new_config_path}")
+        return {'status': 'success', 'config_path': new_config_path, 'timestamp': timestamp}
+    except Exception as e:
+        logger.error(f"Error generating pre-run validation config file: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+ 
 # Run Management: Run ECL Engine
 @app.route('/run_ecl_engine', methods=['POST'])
 def run_ecl_engine():
     try:
         data = request.get_json()
-        selected_parameters = data.get('selectedParameters', '')
-        selected_corrections = data.get('selectedCorrections', '')
         reporting_date = data.get('reportingDate', '')
         run_mode = data.get('runMode', '')
-        country = data.get('country', '')
         ui_timestamp = data.get('ui_timestamp', '')  # Get UI timestamp from request
         
         # Log the selections
         logger.info(f"Starting ECL engine with existing config file: {CONFIG_FILE_PATH}")
-        logger.info(f"Selected parameters: {selected_parameters}")
-        logger.info(f"Selected corrections: {selected_corrections}")
         logger.info(f"Reporting date: {reporting_date}")
         logger.info(f"Run mode: {run_mode}")
-        logger.info(f"Country: {country}")
         logger.info(f"UI timestamp: {ui_timestamp}")
-        
-        # Copy selected files to PARAM_PATH
-        copy_result = copy_files_to_param_path(selected_parameters, selected_corrections)
-        if copy_result['status'] == 'failed':
-            return jsonify({
-                'error': f'Failed to copy files: {copy_result["error"]}'
-            }), 500
+        logger.info("Using files already in PARAM_PATH")
         
         # Generate new config file with user selections and UI timestamp
-        config_result = generate_new_config_file(reporting_date, run_mode, country, ui_timestamp)
-        if config_result['status'] == 'failed':
+        config_result = generate_new_config_file(reporting_date, run_mode, ui_timestamp)
+        if config_result['status'] == 'Failed':
             return jsonify({
                 'error': f'Failed to generate config file: {config_result["error"]}'
             }), 500
@@ -1382,27 +2497,24 @@ def run_ecl_engine():
         settings = json.dumps({
             "task_id": task_id,
             "timestamp": timestamp,
-            "selectedParameters": selected_parameters,
-            "selectedCorrections": selected_corrections,
             "reportingDate": reporting_date,
-            "runMode": run_mode,
-            "country": country
+            "runMode": run_mode
         })
         
         now_dt = datetime.now()
         # Save to DB
         save_eclengine_record(
-            maker='RMGUser_1',
+            maker=data.get('maker','Unknown User'),
             time=now_dt,
             settings=settings,
             action=data.get('action', ''),
-            status='running',
+            status='Running',
             checker='Waiting'
         )
-        update_eclengine_status_in_db(task_id, 'running')
+        update_eclengine_status_in_db(task_id, 'Running')
         
         # Prepare command with new config file
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main.py")} --configPath {new_config_path}'
+        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
         logger.info(f"Executing command: {command}")
         logger.info(f"Working directory: {BASE_ECL_ENGINE}")
         logger.info(f"Using config file: {new_config_path}")
@@ -1410,9 +2522,9 @@ def run_ecl_engine():
         
         # Initialize task status with creation timestamp
         task_status[task_id] = {
-            'status': 'running',
+            'status': 'Running',
             'data': data,
-            'copied_files': copy_result.get('copied_files', []),
+            'copied_files': [],
             'config_file': new_config_path,
             'timestamp': timestamp,
             'created_at': datetime.now().isoformat(),
@@ -1427,7 +2539,7 @@ def run_ecl_engine():
             'task_id': task_id,
             'status': 'pending',
             'timestamp': timestamp,
-            'copied_files': copy_result.get('copied_files', []),
+            'copied_files': [],
             'config_file': new_config_path
         }), 202
     except Exception as e:
@@ -1439,7 +2551,7 @@ def run_ecl_engine():
             'error': str(e),
             'traceback': error_details
         }), 500
-
+ 
 # Resume ECL Engine Run
 @app.route('/resume_ecl_engine', methods=['POST'])
 def resume_ecl_engine():
@@ -1457,19 +2569,15 @@ def resume_ecl_engine():
         logger.info(f"UI timestamp: {ui_timestamp}")
         
         # Modify the existing config file with new run mode
-        config_result = modify_existing_config_file(selected_resume_config, selected_resume_run_mode)
-        if config_result['status'] == 'failed':
+        config_result = generate_resume_config_file(selected_resume_config, selected_resume_run_mode, ui_timestamp)
+        if config_result['status'] == 'Failed':
             return jsonify({
-                'error': f'Failed to modify config file: {config_result["error"]}'
+                'error': f'Failed to generate resume config file: {config_result["error"]}'
             }), 500
         
-        # Use the modified config file path
-        modified_config_path = config_result['config_path']
-        
-        # Extract timestamp from config filename for output path
-        # Config filename format: run_config_file_YYYYMMDDHHMMSS.json
-        config_filename_without_ext = selected_resume_config.replace('.json', '')
-        timestamp = config_filename_without_ext.replace('run_config_file_', '')
+        # Use the new resume config file path and timestamp
+        new_config_path = config_result['config_path']
+        timestamp = config_result.get('timestamp', '')
         
         # Generate task ID
         task_id = str(uuid.uuid4())
@@ -1490,27 +2598,27 @@ def resume_ecl_engine():
         now_dt = datetime.now()
         # Save to DB
         save_eclengine_record(
-            maker='RMGUser_1',
+            maker=data.get('maker', 'Unknown User'),
             time=now_dt,
             settings=settings,
             action=resume_action_comment,
-            status='running',
+            status='Running',
             checker='Waiting'
         )
-        update_eclengine_status_in_db(task_id, 'running')
+        update_eclengine_status_in_db(task_id, 'Running')
         
-        # Prepare command with modified config file
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main.py")} --configPath {modified_config_path}'
+        # Prepare command with new resume config file
+        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
         logger.info(f"Executing resume command: {command}")
         logger.info(f"Working directory: {BASE_ECL_ENGINE}")
-        logger.info(f"Using modified config file: {modified_config_path}")
-        logger.info(f"Output will continue in existing folder: {timestamp}")
+        logger.info(f"Using new resume config file: {new_config_path}")
+        logger.info(f"Resume will use copied output folder: {timestamp}")
         
         # Initialize task status
         task_status[task_id] = {
-            'status': 'running',
+            'status': 'Running',
             'data': data,
-            'config_file': modified_config_path,
+            'config_file': new_config_path,
             'timestamp': timestamp,
             'created_at': datetime.now().isoformat(),
             'command': command,
@@ -1525,7 +2633,7 @@ def resume_ecl_engine():
             'task_id': task_id,
             'status': 'pending',
             'timestamp': timestamp,
-            'config_file': modified_config_path
+            'config_file': new_config_path
         }), 202
     except Exception as e:
         logger.error(f"Error initiating ECL engine resume: {str(e)}")
@@ -1553,20 +2661,16 @@ def generate_report():
         logger.info(f"Report action comment: {report_action_comment}")
         logger.info(f"UI timestamp: {ui_timestamp}")
         
-        # Modify the existing config file with run mode 6
-        config_result = modify_existing_config_file(selected_report_config, selected_report_run_mode)
-        if config_result['status'] == 'failed':
+        # Generate report config file that uses existing output folder
+        config_result = generate_report_config_file(selected_report_config, selected_report_run_mode, ui_timestamp)
+        if config_result['status'] == 'Failed':
             return jsonify({
-                'error': f'Failed to modify config file: {config_result["error"]}'
+                'error': f'Failed to generate report config file: {config_result["error"]}'
             }), 500
         
-        # Use the modified config file path
-        modified_config_path = config_result['config_path']
-        
-        # Extract timestamp from config filename for output path
-        # Config filename format: run_config_file_YYYYMMDDHHMMSS.json
-        config_filename_without_ext = selected_report_config.replace('.json', '')
-        timestamp = config_filename_without_ext.replace('run_config_file_', '')
+        # Use the new report config file path and new timestamp
+        new_config_path = config_result['config_path']
+        new_timestamp = config_result.get('timestamp', '')  # This is the new output folder timestamp
         
         # Generate task ID
         task_id = str(uuid.uuid4())
@@ -1574,7 +2678,7 @@ def generate_report():
         # Assemble settings field for report generation
         settings = json.dumps({
             "task_id": task_id,
-            "timestamp": timestamp,
+            "timestamp": new_timestamp,  # Use new output folder timestamp
             "isResume": False,
             "isGenerateReport": True,
             "resumedVersion": selected_report_config,
@@ -1588,28 +2692,131 @@ def generate_report():
         now_dt = datetime.now()
         # Save to DB
         save_eclengine_record(
-            maker='RMGUser_1',
+            maker=data.get('maker', 'Unknown User'),
             time=now_dt,
             settings=settings,
             action=report_action_comment,
-            status='running',
+            status='Running',
             checker='Waiting'
         )
-        update_eclengine_status_in_db(task_id, 'running')
+        update_eclengine_status_in_db(task_id, 'Running')
         
-        # Prepare command with modified config file
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main.py")} --configPath {modified_config_path}'
+        # Prepare command with new report config file
+        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
         logger.info(f"Executing report generation command: {command}")
         logger.info(f"Working directory: {BASE_ECL_ENGINE}")
-        logger.info(f"Using modified config file: {modified_config_path}")
-        logger.info(f"Output will continue in existing folder: {timestamp}")
+        logger.info(f"Using new report config file: {new_config_path}")
+        logger.info(f"Report will use copied output folder: {new_timestamp}")
         
         # Initialize task status
         task_status[task_id] = {
-            'status': 'running',
+            'status': 'Running',
             'data': data,
-            'config_file': modified_config_path,
-            'timestamp': timestamp,
+            'config_file': new_config_path,
+            'timestamp': new_timestamp,  # Use new output folder timestamp
+            'created_at': datetime.now().isoformat(),
+            'command': command,
+            'is_generate_report': True
+        }
+        
+        with future_lock:
+            future = executor.submit(process_ecl_task, command, data)
+            future_to_task_id[future] = task_id
+        
+        return jsonify({
+            'task_id': task_id,
+            'status': 'pending',
+            'timestamp': new_timestamp,  # Return new output folder timestamp
+            'config_file': new_config_path
+        }), 202
+    except Exception as e:
+        logger.error(f"Error initiating report generation: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Full error traceback: {error_details}")
+        return jsonify({
+            'error': str(e),
+            'traceback': error_details
+        }), 500
+ 
+# Generate Report from Record
+@app.route('/generate_report_from_record', methods=['POST'])
+def generate_report_from_record():
+    """New API to generate report from review record"""
+    try:
+        data = request.get_json()
+        record_id = data.get('record_id')
+        ui_timestamp = data.get('ui_timestamp', '')
+        maker = data.get('maker', 'Unknown User')
+        
+        if not record_id:
+            return jsonify({'error': 'Record ID is required'}), 400
+        
+        # Use frontend timestamp if provided, otherwise generate one (consistent with Parameter page)
+        if ui_timestamp:
+            timestamp = ui_timestamp
+        else:
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        
+        # Get original record information
+        original_record = get_eclengine_record_by_id(record_id)
+        if not original_record:
+            return jsonify({'error': 'Original record not found'}), 404
+        
+        if original_record['status'] != 'Completed':
+            return jsonify({'error': 'Only completed records can generate reports'}), 400
+        
+        # Generate report config file
+        config_result = generate_report_config_file_from_record(record_id, timestamp)
+        if config_result['status'] == 'Failed':
+            return jsonify({'error': f'Failed to generate report config: {config_result["error"]}'}), 500
+        
+        # Generate task ID
+        task_id = str(uuid.uuid4())
+        new_timestamp = config_result.get('timestamp', '')
+        new_config_path = config_result.get('config_path', '')
+        
+        # Build settings
+        original_timestamp = original_record['settings'].get('timestamp', '')
+        reporting_date = original_record['settings'].get('reportingDate', '')
+        settings = json.dumps({
+            "task_id": task_id,
+            "timestamp": new_timestamp,
+            "reportingDate": reporting_date,
+            "runMode": "6",
+            "original_timestamp": original_timestamp
+        })
+        
+        # Build action with formatted timestamp
+        formatted_timestamp = format_timestamp_for_display(original_timestamp)
+        action = f"Generate report for ECL Run at {formatted_timestamp}"
+        
+        # Save to reporting records table
+        now_dt = datetime.now()
+        save_reporting_record(
+            task_id=task_id,
+            maker=maker,
+            time=now_dt,
+            settings=settings,
+            action=action,
+            status='Running',
+            checker=maker,
+            original_timestamp=original_timestamp
+        )
+        
+        # Prepare command
+        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
+        logger.info(f"Executing report generation command: {command}")
+        logger.info(f"Using config file: {new_config_path}")
+        logger.info(f"Output will be saved to timestamp folder: {new_timestamp}")
+        
+        # Initialize task status
+        task_status[task_id] = {
+            'status': 'Running',
+            'data': data,
+            'copied_files': [],
+            'config_file': new_config_path,
+            'timestamp': new_timestamp,
             'created_at': datetime.now().isoformat(),
             'command': command,
             'is_generate_report': True
@@ -1623,10 +2830,11 @@ def generate_report():
             'task_id': task_id,
             'status': 'pending',
             'timestamp': timestamp,
-            'config_file': modified_config_path
+            'config_file': new_config_path
         }), 202
+    
     except Exception as e:
-        logger.error(f"Error initiating report generation: {str(e)}")
+        logger.error(f"Error generating report from record: {str(e)}")
         import traceback
         error_details = traceback.format_exc()
         logger.error(f"Full error traceback: {error_details}")
@@ -1634,6 +2842,168 @@ def generate_report():
             'error': str(e),
             'traceback': error_details
         }), 500
+
+# Get Reporting Records
+@app.route('/get_reporting_records', methods=['GET'])
+def api_get_reporting_records():
+    """Get reporting records list"""
+    try:
+        records = get_reporting_records()
+        return jsonify({'records': records}), 200
+    except Exception as e:
+        logger.error(f"Error getting reporting records: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Reporting Status Check
+@app.route('/reporting_status/<task_id>', methods=['GET'])
+def get_reporting_status(task_id):
+    """Get reporting task status"""
+    try:
+        # First check status in memory
+        if task_id in task_status:
+            memory_status = task_status[task_id]
+            return jsonify({
+                'status': memory_status['status'],
+                'timestamp': memory_status.get('timestamp', ''),
+                'config_file': memory_status.get('config_file', '')
+            })
+        
+        # If not in memory, check database
+        record = get_reporting_record(task_id)
+        if record:
+            return jsonify({
+                'status': record['status'],
+                'timestamp': record['timestamp'],
+                'config_file': f"run_config_file_{record['timestamp']}.json"
+            })
+        
+        return jsonify({'error': 'Task not found'}), 404
+    
+    except Exception as e:
+        logger.error(f"Error getting reporting status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Confirm Reporting Record
+@app.route('/confirm_reporting_record', methods=['POST'])
+def confirm_reporting_record():
+    """Confirm a reporting record - update status to Confirmed and set checker"""
+    try:
+        data = request.get_json()
+        task_id = data.get('task_id')
+        checker = data.get('checker')
+        
+        if not task_id or not checker:
+            return jsonify({'error': 'Missing required fields: task_id and checker'}), 400
+        
+        # Update the reporting record status and checker
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+            SET status = 'Confirmed', checker = ?
+            WHERE task_id = ?
+        """, (checker, task_id))
+        
+        rows_affected = cursor.rowcount
+        conn.close()
+        
+        if rows_affected > 0:
+            logger.info(f"Confirmed reporting record {task_id} with checker {checker}")
+            return jsonify({'message': 'Reporting record confirmed successfully'}), 200
+        else:
+            logger.warning(f"No reporting record found with task_id {task_id}")
+            return jsonify({'error': 'Reporting record not found'}), 404
+    
+    except Exception as e:
+        logger.error(f"Error confirming reporting record: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Download Reporting Logs
+@app.route('/download_reporting_logs/<task_id>', methods=['GET'])
+def download_reporting_logs(task_id):
+    """Download reporting logs"""
+    try:
+        # Get reporting record
+        record = get_reporting_record(task_id)
+        if not record:
+            return jsonify({'error': 'Reporting record not found'}), 404
+        
+        # Build path to 01_log folder
+        timestamp = record['original_timestamp']
+        base_output_path = '/u01/Apps/EY_working/99_data/03_output_folder'
+        timestamp_folder = f"{base_output_path}/{timestamp}"
+        
+        # Find automatically created folder structure
+        log_folder_path = None
+        if os.path.exists(timestamp_folder):
+            for item in os.listdir(timestamp_folder):
+                item_path = os.path.join(timestamp_folder, item)
+                if os.path.isdir(item_path) and '_' in item:
+                    # Check if this directory contains 01_log
+                    log_path = os.path.join(item_path, '01_log')
+                    if os.path.exists(log_path):
+                        log_folder_path = log_path
+                        break
+        
+        if not log_folder_path:
+            return jsonify({'error': f'Log folder not found for timestamp: {timestamp}'}), 404
+        
+        # Create zip file of logs
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(log_folder_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arc_name = os.path.relpath(file_path, log_folder_path)
+                    zip_file.write(file_path, arc_name)
+        
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'reporting_logs_{timestamp}.zip'
+        )
+    
+    except Exception as e:
+        logger.error(f"Error downloading reporting logs: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Download Reporting Reports
+@app.route('/download_reporting_reports/<task_id>', methods=['GET'])
+def download_reporting_reports(task_id):
+    """Download reporting reports and redirect to reporting page"""
+    try:
+        # Get reporting record
+        record = get_reporting_record(task_id)
+        if not record:
+            return jsonify({'error': 'Reporting record not found'}), 404
+        
+        if record['status'] != 'Completed':
+            return jsonify({'error': 'Report is not ready yet'}), 400
+        
+        # Return redirect information - use the generate report timestamp where reports are stored
+        # For generate report records, use the new timestamp from settings, not original_timestamp
+        settings = record.get('settings', {})
+        if isinstance(settings, str):
+            import json
+            try:
+                settings = json.loads(settings)
+            except:
+                settings = {}
+        
+        # Use the generate report timestamp (new_timestamp) instead of original_timestamp
+        report_timestamp = settings.get('timestamp', record.get('original_timestamp', ''))
+        
+        return jsonify({
+            'redirect': True,
+            'url': f'/reporting?timestamp={report_timestamp}&report_task_id={task_id}'
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error downloading reporting reports: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 # Task Status Check
 @app.route('/task_status/<task_id>', methods=['GET'])
@@ -1644,7 +3014,9 @@ def get_task_status(task_id):
         cursor = conn.cursor()
         cursor.execute(f"""
             SELECT status, settings FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-            WHERE JSON_VALUE(settings, '$.task_id') = ?
+            WHERE settings IS NOT NULL
+            AND ISJSON(settings) = 1
+            AND JSON_VALUE(settings, '$.task_id') = ?
         """, (task_id,))
         row = cursor.fetchone()
         conn.close()
@@ -1689,7 +3061,7 @@ def api_get_eclengine_records():
         return jsonify({'records': records, 'count': len(records)}), 200
     except Exception as e:
         return jsonify({'error': f'Error getting ECL engine records: {str(e)}'}), 500
-
+ 
 # Run Management: Download log files for a specific record
 @app.route('/download_log_files/<task_id>', methods=['GET'])
 def download_log_files(task_id):
@@ -1699,8 +3071,10 @@ def download_log_files(task_id):
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
         cursor.execute(f"""
-            SELECT settings FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-            WHERE JSON_VALUE(settings, '$.task_id') = ?
+            SELECT settings, maker FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE settings IS NOT NULL
+            AND ISJSON(settings) = 1
+            AND JSON_VALUE(settings, '$.task_id') = ?
         """, (task_id,))
         row = cursor.fetchone()
         conn.close()
@@ -1710,6 +3084,7 @@ def download_log_files(task_id):
         
         settings = json.loads(row[0]) if row[0] else {}
         timestamp = settings.get('timestamp', '')
+        maker = row[1] if row[1] else 'Unknown User'
         
         if not timestamp:
             return jsonify({'error': 'No timestamp found for this record'}), 404
@@ -1734,7 +3109,7 @@ def download_log_files(task_id):
             return jsonify({'error': f'Log folder not found for timestamp: {timestamp}'}), 404
         
         # Log download activity
-        log_download_activity("Default", "Run Management", f"ECL log files for {timestamp}")
+        log_download_activity(maker, "Run Management", f"ECL log files for {timestamp}")
         
         # Create a zip file of the log folder
         from io import BytesIO
@@ -1760,17 +3135,84 @@ def download_log_files(task_id):
             as_attachment=True,
             download_name=filename
         )
-        
+    
     except Exception as e:
         logger.error(f"Error downloading log files for task {task_id}: {str(e)}")
         return jsonify({'error': f'Error downloading log files: {str(e)}'}), 500
-
+ 
+# Run Management: Download ECL results for a specific record
+@app.route('/download_ecl_results/<task_id>', methods=['GET'])
+def download_ecl_results(task_id):
+    """Download entire timestamp folder for a specific ECL engine run"""
+    try:
+        # Get the record from database to find timestamp
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT settings, maker FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE settings IS NOT NULL
+            AND ISJSON(settings) = 1
+            AND JSON_VALUE(settings, '$.task_id') = ?
+        """, (task_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({'error': 'Record not found'}), 404
+        
+        settings = json.loads(row[0]) if row[0] else {}
+        timestamp = settings.get('timestamp', '')
+        maker = row[1] if row[1] else 'Unknown User'
+        
+        if not timestamp:
+            return jsonify({'error': 'No timestamp found for this record'}), 404
+        
+        # Construct the timestamp folder path
+        base_output_path = "/u01/Apps/EY_working/99_data/03_output_folder"
+        timestamp_folder = f"{base_output_path}/{timestamp}"
+        
+        # Check if the timestamp folder exists
+        if not os.path.exists(timestamp_folder):
+            return jsonify({'error': f'Timestamp folder not found: {timestamp_folder}'}), 404
+        
+        # Log download activity
+        log_download_activity(maker, "Run Management", f"ECL results for {timestamp}")
+        
+        # Create a zip file of the entire timestamp folder
+        from io import BytesIO
+        import zipfile
+        
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(timestamp_folder):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    # Calculate the relative path for the zip file (relative to timestamp folder)
+                    relative_path = os.path.relpath(file_path, timestamp_folder)
+                    zip_file.write(file_path, relative_path)
+        
+        zip_buffer.seek(0)
+        
+        # Generate filename with timestamp
+        filename = f"ecl_results_{timestamp}.zip"
+        
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=filename
+        )
+    
+    except Exception as e:
+        logger.error(f"Error downloading ECL results for task {task_id}: {str(e)}")
+        return jsonify({'error': f'Error downloading ECL results: {str(e)}'}), 500
+ 
 #============================================= Reporting =============================================
 def download_single_report(report_type, report_base_path=None):
     """Download a single report file"""
     try:
         if report_type not in REPORT_FILES:
-            return {'status': 'failed', 'error': f'Unknown report type: {report_type}'}
+            return {'status': 'Failed', 'error': f'Unknown report type: {report_type}'}
         
         filename = REPORT_FILES[report_type]
         
@@ -1779,8 +3221,8 @@ def download_single_report(report_type, report_base_path=None):
             # ECL Engine automatically creates {data_yymm}_{timestamp_date}/03_result structure
             base_path = report_base_path
             # Look for the automatically created folder structure
-            possible_paths = []
             
+            possible_paths = []
             # Check if the base path exists
             if os.path.exists(base_path):
                 # Look for subdirectories that match the pattern {data_yymm}_{timestamp_date}
@@ -1803,13 +3245,13 @@ def download_single_report(report_type, report_base_path=None):
         else:
             # No dynamic path provided, cannot download
             logger.error("No report base path provided and no default path available")
-            return {'status': 'failed', 'error': 'No report base path available'}
+            return {'status': 'Failed', 'error': 'No report base path available'}
         
         logger.info(f"Attempting to download {report_type} from: {file_path}")
         
         if not os.path.exists(file_path):
             logger.error(f"Report file not found: {file_path}")
-            return {'status': 'failed', 'error': f'Report file not found: {file_path}'}
+            return {'status': 'Failed', 'error': f'Report file not found: {file_path}'}
         
         return send_file(
             file_path,
@@ -1819,7 +3261,7 @@ def download_single_report(report_type, report_base_path=None):
         )
     except Exception as e:
         logger.error(f"Error downloading {report_type} report: {str(e)}")
-        return {'status': 'failed', 'error': str(e)}
+        return {'status': 'Failed', 'error': str(e)}
 
 def download_bu_reports(report_base_path=None):
     """Download all BU Excel reports as a zip file"""
@@ -1856,7 +3298,7 @@ def download_bu_reports(report_base_path=None):
         else:
             # No dynamic path provided, cannot download
             logger.error("No report base path provided and no default path available")
-            return {'status': 'failed', 'error': 'No report base path available'}
+            return {'status': 'Failed', 'error': 'No report base path available'}
         
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -1870,7 +3312,7 @@ def download_bu_reports(report_base_path=None):
                     logger.warning(f"BU report file not found: {file_path}")
             
             if files_added == 0:
-                return {'status': 'failed', 'error': 'No BU report files found'}
+                return {'status': 'Failed', 'error': 'No BU report files found'}
         
         zip_buffer.seek(0)
         return send_file(
@@ -1881,7 +3323,7 @@ def download_bu_reports(report_base_path=None):
         )
     except Exception as e:
         logger.error(f"Error downloading BU reports: {str(e)}")
-        return {'status': 'failed', 'error': str(e)}
+        return {'status': 'Failed', 'error': str(e)}
 
 # Reporting: Download ECL Monthly Report
 @app.route('/download_ecl_monthly_report', methods=['GET'])
@@ -1889,10 +3331,11 @@ def download_ecl_monthly_report():
     try:
         # Get report_base_path from request args
         report_base_path = request.args.get('report_base_path')
+        maker = request.args.get('maker', 'Unknown User')
         
         # Log download activity
         file_path = f"ECL Monthly Report from {report_base_path}" if report_base_path else "ECL Monthly Report"
-        log_download_activity("Default", "Reporting", file_path)
+        log_download_activity(maker, "Reporting", file_path)
         
         return download_single_report('ecl_monthly', report_base_path)
     except Exception as e:
@@ -1905,10 +3348,11 @@ def download_ecl_summary_report():
     try:
         # Get report_base_path from request args
         report_base_path = request.args.get('report_base_path')
+        maker = request.args.get('maker', 'Unknown User')
         
         # Log download activity
         file_path = f"ECL Summary Report from {report_base_path}" if report_base_path else "ECL Summary Report"
-        log_download_activity("Default", "Reporting", file_path)
+        log_download_activity(maker, "Reporting", file_path)
         
         return download_single_report('ecl_summary', report_base_path)
     except Exception as e:
@@ -1921,10 +3365,11 @@ def download_bu_excel_reports():
     try:
         # Get report_base_path from request args
         report_base_path = request.args.get('report_base_path')
+        maker = request.args.get('maker', 'Unknown User')
         
         # Log download activity
         file_path = f"BU Excel Reports from {report_base_path}" if report_base_path else "BU Excel Reports"
-        log_download_activity("Default", "Reporting", file_path)
+        log_download_activity(maker, "Reporting", file_path)
         
         return download_bu_reports(report_base_path)
     except Exception as e:
@@ -1964,7 +3409,7 @@ def check_report_availability():
     except Exception as e:
         logger.error(f"Error checking report availability: {str(e)}")
         return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500
-
+ 
 # Reporting: Check report availability for specific timestamp
 @app.route('/check_report_availability/<timestamp>', methods=['GET'])
 def check_report_availability_for_timestamp(timestamp):
@@ -1986,9 +3431,11 @@ def check_report_availability_for_timestamp(timestamp):
                 result_path = os.path.join(item_path, '03_result')
                 if os.path.exists(result_path):
                     possible_paths.append(result_path)
+                    logger.info(f"Found result folder: {result_path}")
         
         if not possible_paths:
             logger.warning(f"No result folders found in: {base_path}")
+            logger.warning(f"Available items in {base_path}: {os.listdir(base_path) if os.path.exists(base_path) else 'N/A'}")
             return jsonify({'has_reports': False, 'error': 'No result folders found'}), 200
         
         # Check if any reports exist in the result folders
@@ -2015,11 +3462,10 @@ def check_report_availability_for_timestamp(timestamp):
         
         logger.info(f"Report availability check for timestamp {timestamp}: {has_reports}")
         return jsonify({'has_reports': has_reports}), 200
-        
+    
     except Exception as e:
         logger.error(f"Error checking report availability for timestamp {timestamp}: {str(e)}")
-        return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500
-
+        return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500 
 
 #============================================= Role Management =============================================
 @app.route('/get_user_records', methods=['GET'])
@@ -2224,8 +3670,7 @@ def api_update_role_function_record():
         logger.error(f"Error in api_update_role_function_record: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
-############################################################################ Audit Trail
+#============================================= Audit Trail =============================================
 def create_audit_trial_folder():
     """Create the AuditTrial folder if it doesn't exist"""
     try:
@@ -2272,6 +3717,75 @@ def log_download_activity(user_name, page, file_path):
     except Exception as e:
         logger.error(f"Error logging download activity: {str(e)}")
         return False
+ 
+def log_user_access(username, action, status, details=None):
+    """Log user access activities (login/logout) to the audit trail"""
+    try:
+        create_audit_trial_folder()
+        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_access_log.txt'
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        log_entry = f"[{current_time}] User: {username} | Action: {action} | Status: {status}"
+        if details:
+            log_entry += f" | Details: {details}"
+        log_entry += "\n"
+        
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+        
+        logger.info(f"User access logged: {action} by {username} - {status}")
+        return True
+    except Exception as e:
+        logger.error(f"Error logging user access: {str(e)}")
+        return False
+
+def create_all_admin_logs():
+    """Create a combined log file containing all admin logs"""
+    try:
+        create_audit_trial_folder()
+        
+        # Define admin log files to combine
+        admin_log_files = [
+            ('User & Role Updates', r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_role_updates_log.txt'),
+            ('User Access', r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_access_log.txt'),
+            ('Download Activity', r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/download_log.txt')
+        ]
+        
+        # Create combined content
+        combined_content = f"All Admin Logs - Combined Report\n"
+        combined_content += f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        combined_content += "=" * 80 + "\n\n"
+        
+        for log_name, log_file_path in admin_log_files:
+            combined_content += f"\n{'='*20} {log_name} {'='*20}\n"
+            
+            if os.path.exists(log_file_path):
+                with open(log_file_path, 'r', encoding='utf-8') as f:
+                    content = f.read().strip()
+                    if content:
+                        combined_content += content + "\n"
+                    else:
+                        combined_content += f"No entries found for {log_name}\n"
+            else:
+                combined_content += f"Log file not found: {log_name}\n"
+            
+            combined_content += "\n"
+        
+        # Create temporary file for download
+        temp_file = BytesIO()
+        temp_file.write(combined_content.encode('utf-8'))
+        temp_file.seek(0)
+        
+        return send_file(
+            temp_file,
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name='all_admin_logs.txt'
+        )
+    
+    except Exception as e:
+        logger.error(f"Error creating all admin logs: {str(e)}")
+        return jsonify({'error': f'Error creating combined log: {str(e)}'}), 500
 
 def log_ecl_result_confirmation(user_name, timestamp, settings):
     """Log ECL result confirmation to the audit trail"""
@@ -2327,6 +3841,12 @@ def download_audit_log(log_type):
         elif log_type == 'parameter_updates':
             log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/parameter_update_log.txt'
             filename = 'parameter_update_log.txt'
+        elif log_type == 'user_access':
+            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_access_log.txt'
+            filename = 'user_access_log.txt'
+        elif log_type == 'all_admin_logs':
+            # Create a combined log file for all admin logs
+            return create_all_admin_logs()
         else:
             return jsonify({'error': 'Invalid log type'}), 400
         
@@ -2357,8 +3877,10 @@ def confirm_ecl_result():
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
         cursor.execute(f"""
-            SELECT settings FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-            WHERE JSON_VALUE(settings, '$.task_id') = ?
+            SELECT settings, maker FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE settings IS NOT NULL
+            AND ISJSON(settings) = 1
+            AND JSON_VALUE(settings, '$.task_id') = ?
         """, (task_id,))
         row = cursor.fetchone()
         conn.close()
@@ -2367,21 +3889,21 @@ def confirm_ecl_result():
             return jsonify({'error': 'Record not found'}), 404
         
         settings = row[0] if row[0] else '{}'
+        maker = row[1] if row[1] else 'Unknown User'
         
         # Log ECL result confirmation
-        log_ecl_result_confirmation("Default", timestamp, settings)
+        log_ecl_result_confirmation(maker, timestamp, settings)
         
         return jsonify({
             'message': 'ECL result confirmed successfully',
             'task_id': task_id,
             'timestamp': timestamp
         }), 200
-        
+    
     except Exception as e:
         logger.error(f"Error confirming ECL result: {str(e)}")
         return jsonify({'error': f'Error confirming ECL result: {str(e)}'}), 500
-
-
+ 
 ############################################################################ AD Validation
 # LDAP Configuration
 LDAP_SERVER = 'ldap://10.30.244.12:389'
@@ -2396,27 +3918,27 @@ def validate_ad_user_id(user_id):
     try:
         # Create LDAP server connection
         server = Server(LDAP_SERVER, get_info=ALL, connect_timeout=10)
-        
+    
         # Connect using SIMPLE authentication
         conn = Connection(
-            server, 
-            user=LDAP_BIND_DN, 
-            password=LDAP_BIND_PASSWORD, 
+            server,
+            user=LDAP_BIND_DN,
+            password=LDAP_BIND_PASSWORD,
             authentication="SIMPLE",
             auto_bind=True
         )
-        
+    
         # Search for user
         search_filter = f'(sAMAccountName={user_id})'
         logger.info(f"Searching for user with filter: {search_filter}")
-        
+      
         conn.search(
             search_base=LDAP_SEARCH_BASE,
             search_filter=search_filter,
             attributes=['sAMAccountName', 'displayName', 'mail', 'userPrincipalName'],
             search_scope='SUBTREE'
         )
-        
+       
         if conn.entries:
             # User found
             user_entry = conn.entries[0]
@@ -2432,13 +3954,13 @@ def validate_ad_user_id(user_id):
                     display_name = str(user_entry.displayName.value)
             except:
                 pass
-                
+            
             try:
                 if hasattr(user_entry, 'mail') and user_entry.mail:
                     email = str(user_entry.mail.value)
             except:
                 pass
-                
+            
             try:
                 if hasattr(user_entry, 'userPrincipalName') and user_entry.userPrincipalName:
                     upn = str(user_entry.userPrincipalName.value)
@@ -2446,7 +3968,7 @@ def validate_ad_user_id(user_id):
                 pass
             
             return {
-                "status": "success", 
+                "status": "success",
                 "message": f"User ID {user_id} exists in Active Directory",
                 "user_id": user_id,
                 "display_name": display_name,
@@ -2456,15 +3978,15 @@ def validate_ad_user_id(user_id):
         else:
             logger.warning(f"User {user_id} not found in AD")
             return {
-                "status": "error", 
+                "status": "error",
                 "message": f"User ID {user_id} not found"
             }
-            
+    
     except Exception as e:
         error_msg = f"LDAP search error: {str(e)}"
         logger.error(f"{error_msg}")
         return {
-            "status": "error", 
+            "status": "error",
             "message": error_msg
         }
     finally:
@@ -2472,7 +3994,7 @@ def validate_ad_user_id(user_id):
             conn.unbind()
 
 @app.route('/validate-ad-user', methods=['POST'])
-def validate_user():
+def validate_ad_user():
     """Validate user against Active Directory"""
     data = request.get_json()
     
@@ -2485,6 +4007,353 @@ def validate_user():
     result = validate_ad_user_id(user_id)
     
     return jsonify(result), 200 if result['status'] == 'success' else 404
+ 
+############################################################################ Login Authentication
+@app.route('/validate-ldap-user', methods=['POST'])
+def validate_ldap_user():
+    """Validate user credentials against Active Directory with detailed error messages"""
+    try:
+        data = request.get_json()
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({"status": "error", "message": "Missing username or password"}), 400
+        
+        username = data['username']
+        password = data['password']
+        
+        logger.info(f"Validating LDAP credentials for user: {username}")
+        
+        # Standardize username format for AD search
+        if '\\' in username:
+            # Handle domain\username format (e.g., hkg\u_eya_carsonkwan -> u_eya_carsonkwan)
+            standardized_username = username.split('\\')[-1]
+            logger.info(f"Standardized username from '{username}' to '{standardized_username}'")
+        else:
+            standardized_username = username
+        
+        # Create LDAP server connection
+        server = Server(LDAP_SERVER, get_info=ALL, connect_timeout=10)
+        
+        # Step 1: Check if username exists in AD using service account
+        try:
+            # Connect using service account to search for user
+            search_conn = Connection(
+                server,
+                user=LDAP_BIND_DN,
+                password=LDAP_BIND_PASSWORD,
+                authentication="SIMPLE",
+                auto_bind=True
+            )
+            
+            # Search for user with standardized username
+            search_filters = [
+                f'(sAMAccountName={standardized_username})',
+                f'(userPrincipalName={standardized_username})',
+                f'(cn={standardized_username})'
+            ]
+            
+            user_found = False
+            user_dn = None
+            
+            for search_filter in search_filters:
+                logger.info(f"Searching for user with filter: {search_filter}")
+                
+                search_conn.search(
+                    search_base=LDAP_SEARCH_BASE,
+                    search_filter=search_filter,
+                    attributes=['sAMAccountName', 'userPrincipalName', 'distinguishedName'],
+                    search_scope='SUBTREE'
+                )
+                
+                if search_conn.entries:
+                    user_found = True
+                    user_entry = search_conn.entries[0]
+                    user_dn = str(user_entry.distinguishedName.value)
+                    logger.info(f"User {username} found in AD with DN: {user_dn}")
+                    break
+            
+            search_conn.unbind()
+            
+            # Step 2: If user not found, return invalid username
+            if not user_found:
+                logger.warning(f"User {username} not found in AD")
+                # Log failed login attempt
+                log_user_access(username, "LOGIN_ATTEMPT", "FAILED", "User not found in AD")
+                return jsonify({
+                    "status": "error",
+                    "message": "Invalid username",
+                    "error_type": "invalid_username"
+                }), 401
+           
+            # Step 3: If user found, try to authenticate with password using different formats
+            auth_success = False
+            auth_formats = [
+                user_dn,  # Full DN
+                f"{standardized_username}@hkg.ho.cncb2",  # UPN format
+                f"hkg\\{standardized_username}",  # Domain\username format
+                standardized_username  # Just username
+            ]
+            
+            # Prepare standardized username for database lookup (convert to lowercase)
+            db_username = standardized_username.lower()
+            
+            for auth_format in auth_formats:
+                try:
+                    logger.info(f"Trying authentication with format: {auth_format}")
+                    auth_conn = Connection(
+                        server,
+                        user=auth_format,
+                        password=password,
+                        authentication="SIMPLE",
+                        auto_bind=True
+                    )
+                    
+                    # If bind successful, credentials are valid
+                    logger.info(f"LDAP authentication successful for user: {username} using format: {auth_format}")
+                    auth_conn.unbind()
+                    auth_success = True
+                    break
+                
+                except Exception as auth_error:
+                    logger.debug(f"Authentication Failed with format {auth_format}: {str(auth_error)}")
+                    continue
+            
+            if auth_success:
+                # Log successful LDAP authentication
+                log_user_access(username, "LDAP_AUTH", "SUCCESS", f"Standardized username: {db_username}")
+                return jsonify({
+                    "status": "success",
+                    "message": "LDAP authentication successful",
+                    "standardized_username": db_username
+                })
+            else:
+                logger.warning(f"Password authentication failed for user {username} with all formats")
+                # Log failed password authentication
+                log_user_access(username, "LOGIN_ATTEMPT", "FAILED", "Invalid password")
+                return jsonify({
+                    "status": "error",
+                    "message": "Invalid password",
+                    "error_type": "invalid_password"
+                }), 401
+        
+        except Exception as search_error:
+            logger.error(f"Error searching for user {username}: {str(search_error)}")
+            return jsonify({
+                "status": "error",
+                "message": "Invalid username",
+                "error_type": "invalid_username"
+            }), 401
+    
+    except Exception as e:
+        logger.error(f"Error in LDAP validation: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Authentication service error"
+        }), 500
+
+@app.route('/validate-user', methods=['POST'])
+def validate_user():
+    """Validate user exists in database and get user information"""
+    try:
+        data = request.get_json()
+        if not data or 'username' not in data:
+            return jsonify({"status": "error", "message": "Missing username"}), 400
+        
+        username = data['username']
+        logger.info(f"Validating user in database: {username}")
+        
+        # Check if user exists in database
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"""
+            SELECT id, user_name, login_name, default_role, email, mobile_no, phone_no, remark
+            FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            WHERE LOWER(login_name) = LOWER(?)
+        """, (username,))
+        
+        user_record = cursor.fetchone()
+        conn.close()
+        
+        if user_record:
+            user_data = {
+                'id': user_record[0],
+                'userName': user_record[1],
+                'loginName': user_record[2],
+                'defaultRole': user_record[3],
+                'email': user_record[4] or '',
+                'mobileNo': user_record[5] or '',
+                'phoneNo': user_record[6] or '',
+                'remark': user_record[7] or ''
+            }
+            
+            logger.info(f"User validation successful: {username}")
+            # Log successful user validation (final login success)
+            log_user_access(username, "LOGIN_SUCCESS", "SUCCESS", f"User: {user_data['userName']}")
+            return jsonify({
+                "status": "success",
+                "message": "User found in system",
+                "user": user_data
+            })
+        else:
+            logger.warning(f"User not found in database: {username}")
+            # Log failed user validation (user not in system)
+            log_user_access(username, "LOGIN_ATTEMPT", "FAILED", "User not found in system")
+            return jsonify({
+                "status": "error",
+                "message": "Access Denied - User not found in system"
+            }), 403
+    
+    except Exception as e:
+        logger.error(f"Error in user validation: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "User validation service error"
+        }), 500
+
+@app.route('/get-user-permissions/<username>', methods=['GET'])
+def get_user_permissions(username):
+    """Get user permissions based on their role"""
+    try:
+        logger.info(f"Getting permissions for user: {username}")
+        
+        # Get user's role
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"""
+            SELECT default_role
+            FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            WHERE LOWER(login_name) = LOWER(?)
+        """, (username,))
+        
+        role_record = cursor.fetchone()
+        if not role_record:
+            conn.close()
+            return jsonify({
+                "status": "error",
+                "message": "User not found"
+            }), 404
+        
+        user_role = role_record[0]
+        conn.close()
+        
+        # Get permissions for the user's role
+        permissions = get_role_permissions(user_role)
+        
+        return jsonify({
+            "status": "success",
+            "permissions": permissions
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting user permissions: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Error retrieving permissions"
+        }), 500
+
+def get_role_permissions(role_name):
+    """Get all active permissions for a specific role"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        # Get role-function table name
+        table_name = f"UI_role_function_{role_name.replace(' ', '_').replace('-', '_')}"
+        
+        # Check if table exists
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM [{DB_NAME}].INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_NAME = ?
+        """, (table_name,))
+        
+        if cursor.fetchone()[0] == 0:
+            conn.close()
+            return []
+        
+        # Get active permissions for this role
+        cursor.execute(f"""
+            SELECT function_name
+            FROM [{DB_NAME}].[dbo].[{table_name}]
+            WHERE status = 'Active'
+        """)
+        
+        permissions = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        return permissions
+    
+    except Exception as e:
+        logger.error(f"Error getting role permissions: {str(e)}")
+        return []
+
+@app.route('/validate-session', methods=['POST'])
+def validate_session():
+    """Validate user session"""
+    try:
+        data = request.get_json()
+        if not data or 'username' not in data:
+            return jsonify({"status": "error", "message": "Missing username"}), 400
+        
+        username = data['username']
+        logger.info(f"Validating session for user: {username}")
+        
+        # Check if user still exists and is active
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            WHERE login_name = ?
+        """, (username,))
+        
+        user_exists = cursor.fetchone()[0] > 0
+        conn.close()
+        
+        if user_exists:
+            # Log successful session validation
+            log_user_access(username, "SESSION_VALIDATION", "SUCCESS", "Session is valid")
+            return jsonify({
+                "status": "success",
+                "message": "Session valid"
+            })
+        else:
+            # Log failed session validation
+            log_user_access(username, "SESSION_VALIDATION", "FAILED", "User no longer exists")
+            return jsonify({
+                "status": "error",
+                "message": "User no longer exists"
+            }), 403
+    
+    except Exception as e:
+        logger.error(f"Error in session validation: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Session validation error"
+        }), 500
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    try:
+        data = request.get_json()
+        username = data.get('username', 'Unknown') if data else 'Unknown'
+        
+        # Log user logout
+        log_user_access(username, "LOGOUT", "SUCCESS", "User logged out")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Logout successful"
+        })
+    except Exception as e:
+        logger.error(f"Error in logout: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Logout error"
+        }), 500
 
 ############################################################################ Run
 if __name__ == '__main__':
@@ -2494,11 +4363,9 @@ if __name__ == '__main__':
         create_ui_user_maintenance_table()
         create_ui_role_maintenance_table()
         create_ui_function_maintenance_table()
+        create_prerun_validation_table()
         logger.info("All database tables initialized successfully")
     else:
-        logger.error("Database connection failed")
+        logger.error("Database connection Failed")
     logger.info("Starting Flask server on port 5010...")
-    # Only run directly if not using gunicorn
-    import sys
-    if 'gunicorn' not in sys.modules:
-        app.run(debug=True, port=5010)
+    app.run(debug=True, port=5010)
