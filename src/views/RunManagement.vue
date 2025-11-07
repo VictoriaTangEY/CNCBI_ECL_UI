@@ -204,12 +204,12 @@
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
                   <button
                     @click="generateReportFromRecord(index)"
-                    :disabled="item.status !== 'Completed'"
+                    :disabled="!canGenerateReport(item)"
                     class="generate-report-btn"
                     style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;"
                     :style="{
-                      background: item.status === 'Completed' ? '#4CAF50' : '#ccc',
-                      cursor: item.status === 'Completed' ? 'pointer' : 'not-allowed'
+                      background: canGenerateReport(item) ? '#4CAF50' : '#ccc',
+                      cursor: canGenerateReport(item) ? 'pointer' : 'not-allowed'
                     }"
                   >
                     Generate Report
@@ -268,11 +268,9 @@
               <tr v-for="(item, index) in filteredReportingRecords" :key="index" :style="{ backgroundColor: item.status === 'Completed' ? '#e8f5e9' : item.status === 'Confirmed' ? '#fff3cd' : '#fff' }">
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
                   <input 
-                    type="radio" 
-                    name="reporting-select" 
-                    :value="index"
-                    :disabled="item.status !== 'Completed'"
-                    @change="selectReportingRecord(index)"
+                    type="checkbox" 
+                    v-model="item.selected" 
+                    :disabled="item.status !== 'Completed' && item.status !== 'Confirmed'"
                   />
                 </td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
@@ -308,7 +306,7 @@
             </tbody>
           </table>
         </div>
-        <div style="margin-top: 3px; text-align: right;">
+        <div style="margin-top: 3px; text-align: right; display: flex; gap: 10px; justify-content: flex-end;">
           <button 
             class="upload-button" 
             style="background: #FF612C;" 
@@ -317,6 +315,15 @@
             :title="hasSelectedCompletedReporting ? 'Confirm selected completed records' : 'No completed records selected'"
           >
             Confirm
+          </button>
+          <button 
+            class="upload-button" 
+            style="background: #6c757d;" 
+            @click="unconfirmSelectedReporting"
+            :disabled="!hasSelectedConfirmedReporting"
+            :title="hasSelectedConfirmedReporting ? 'Unconfirm selected confirmed records' : 'No confirmed records selected'"
+          >
+            Unconfirm
           </button>
         </div>
       </div>
@@ -411,7 +418,6 @@ const downloadPopupClosed = ref(false)
 // Add new refs for reporting records filtering and selection
 const reportingDateFilter = ref('')
 const statusFilter = ref('')
-const selectedReportingIndex = ref<number | null>(null)
 
 // Add new refs for review filtering
 const reviewReportingDateFilter = ref('')
@@ -457,8 +463,11 @@ const filteredReportingRecords = computed(() => {
 })
 
 const hasSelectedCompletedReporting = computed(() => {
-  return selectedReportingIndex.value !== null && 
-         filteredReportingRecords.value[selectedReportingIndex.value]?.status === 'Completed'
+  return filteredReportingRecords.value.some(item => item.selected && item.status === 'Completed')
+})
+
+const hasSelectedConfirmedReporting = computed(() => {
+  return filteredReportingRecords.value.some(item => item.selected && item.status === 'Confirmed')
 })
 
 // Computed properties for review filtering
@@ -491,14 +500,13 @@ const filteredReviewList = computed(() => {
 })
 
 // Methods for reporting records
-function selectReportingRecord(index: number) {
-  selectedReportingIndex.value = index
-}
-
 function clearFilters() {
   reportingDateFilter.value = ''
   statusFilter.value = ''
-  selectedReportingIndex.value = null
+  // Clear all selections
+  reportingRecords.value.forEach(item => {
+    item.selected = false
+  })
 }
 
 function clearReviewFilters() {
@@ -507,27 +515,60 @@ function clearReviewFilters() {
 }
 
 async function confirmSelectedReporting() {
-  if (selectedReportingIndex.value === null) return
+  const selectedRecords = filteredReportingRecords.value.filter(item => item.selected && item.status === 'Completed')
   
-  const selectedRecord = filteredReportingRecords.value[selectedReportingIndex.value]
-  if (!selectedRecord || selectedRecord.status !== 'Completed') return
+  if (selectedRecords.length === 0) return
+  
+  // Process the first selected record (since only one can be selected at a time based on UI)
+  const selectedRecord = selectedRecords[0]
+  const taskId = selectedRecord.task_id
   
   try {
     await axios.post('/api/confirm_reporting_record', {
-      task_id: selectedRecord.task_id,
+      task_id: taskId,
       checker: getUserDisplayName()
     })
     
     // Refresh reporting records
     await fetchReportingRecords()
     
-    // Clear selection
-    selectedReportingIndex.value = null
-    
-    alert('Reporting record confirmed successfully!')
+    // Clear selection after refresh
+    const refreshedRecord = reportingRecords.value.find(item => item.task_id === taskId)
+    if (refreshedRecord) {
+      refreshedRecord.selected = false
+    }
   } catch (error) {
     console.error('Error confirming reporting record:', error)
     alert('Failed to confirm reporting record. Please try again.')
+  }
+}
+
+async function unconfirmSelectedReporting() {
+  const selectedRecords = filteredReportingRecords.value.filter(item => item.selected && item.status === 'Confirmed')
+  
+  if (selectedRecords.length === 0) return
+  
+  // Process the first selected record (since only one can be selected at a time based on UI)
+  const selectedRecord = selectedRecords[0]
+  const taskId = selectedRecord.task_id
+  
+  try {
+    await axios.post('/api/unconfirm_reporting_record', {
+      task_id: taskId,
+      checker: getUserDisplayName()
+    })
+    
+    // Refresh reporting records
+    await fetchReportingRecords()
+    
+    // Clear selection after refresh
+    const refreshedRecord = reportingRecords.value.find(item => item.task_id === taskId)
+    if (refreshedRecord) {
+      refreshedRecord.selected = false
+    }
+  } catch (error) {
+    console.error('Error unconfirming reporting record:', error)
+    alert('Failed to unconfirm reporting record. Please try again.')
   }
 }
  
@@ -721,11 +762,22 @@ async function downloadEclResults(index: number) {
   }
 }
  
+// Check if a record can generate report
+function canGenerateReport(item: ReviewItem): boolean {
+  if (item.status !== 'Completed') {
+    return false
+  }
+  
+  // Check if run mode ends with '5'
+  const runMode = item.runMode || ''
+  return runMode.endsWith('5')
+}
+
 // Generate Report from Record
 async function generateReportFromRecord(index: number) {
   const item = reviewList.value[index]
-  if (item.status !== 'Completed') {
-    alert('Only completed records can generate reports')
+  if (!canGenerateReport(item)) {
+    alert('Only completed records with run mode ending in 5 can generate reports')
     return
   }
  
@@ -857,7 +909,11 @@ const fetchReviewListFromDB = async () => {
 const fetchReportingRecords = async () => {
   try {
     const response = await axios.get('/api/get_reporting_records')
-    reportingRecords.value = response.data.records
+    // Initialize selected property for each record
+    reportingRecords.value = response.data.records.map((record: any) => ({
+      ...record,
+      selected: false
+    }))
   } catch (error) {
     console.error('Error fetching reporting records:', error)
   }

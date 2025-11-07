@@ -23,62 +23,152 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 
-############################################################################ Logs
-log_dir = Path(__file__).parent / 'logs'
+################################################################################################################################################################
+#                           CONFIGURATIONS
+################################################################################################################################################################
+"""
+This section contains all configurable parameters for the ECL UI system. Modify these values according to deployment environment.
+
+Configuration Categories:
+1. Directory Paths           - File system paths for uploads, outputs, etc.
+2. ECL Engine Settings       - ECL calculation engine configuration
+3. Database Configuration    - SQL Server connection settings
+4. LDAP/AD Configuration     - Active Directory authentication settings
+5. Report Files              - Output report file names
+6. Audit Logs                - Audit trail log file paths
+7. Threading Settings        - Concurrent execution settings
+8. Logging Settings          - Application logging configuration
+"""
+# ==============================================================================
+# 1. DIRECTORY PATHS
+BASE_ROOT = r'/u01/Apps/EY_working'
+BASE_UI_ROOT = os.path.join(BASE_ROOT, 'ECL_UI_v0.1')
+BASE_DATA_ROOT = os.path.join(BASE_ROOT, '99_data')
+BASE_ECL_ENGINE = os.path.join(BASE_ROOT, 'ECL_Engine_v0.4')
+BASE_UPLOAD_FOLDER = os.path.join(BASE_UI_ROOT, 'interim')      
+BASE_APPROVED_FOLDER = os.path.join(BASE_UI_ROOT, 'approved')    
+BASE_OUTPUT_FOLDER = os.path.join(BASE_DATA_ROOT, '03_output_folder')      
+BASE_PARAM_FOLDER = os.path.join(BASE_DATA_ROOT, '02_param_upload_folder') 
+AUDIT_FOLDER = os.path.join(BASE_UI_ROOT, 'AuditTrial')  
+TEMP_LOG_FOLDER = '/tmp'                                  
+
+# ==============================================================================
+# 2. ECL ENGINE SETTINGS
+ECL_ENGINE_CONFIG = {
+    'python_executable': 'python3',           
+    'main_script': 'main_ui.py',              
+    'config_template': 'run_config_file.json', 
+    'process_timeout': 21600,                 
+}
+
+CONFIG_FILE_PATH = os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG['config_template'])
+
+# ==============================================================================
+# 3. REPORTING
+REPORT_FILES = {
+    'ecl_monthly': 'reporting_ecl_result_to_rmg.xlsx',     
+    'ecl_summary': 'reporting_ecl_result_summary.xlsx',    
+    'bu_excel': [                                           
+        'ecl_result_by_BU_PBG-BB.xlsx',
+        'ecl_result_by_BU_PBG-NON-BB.xlsx',
+        'ecl_result_by_BU_TMG.xlsx',
+        'ecl_result_by_BU_WBG.xlsx'
+    ],
+    'hkma': 'reporting_ecl_hkma.xlsx',
+    'audit_trial': 'reporting_ecl_audit_trial.xlsx',
+    'gl_posting': 'reporting_ecl_gl_posting.xlsx'
+}
+
+# ==============================================================================
+# 4. AUDIT TRIAL
+AUDIT_LOGS = {
+    'user_role_updates': os.path.join(AUDIT_FOLDER, 'user_role_updates_log.txt'),  
+    'user_access': os.path.join(AUDIT_FOLDER, 'user_access_log.txt'),              
+    'download': os.path.join(AUDIT_FOLDER, 'download_log.txt'),                    
+    'ecl_confirmation': os.path.join(AUDIT_FOLDER, 'ecl_result_confirmation_log.txt'),  
+    'parameter_update': os.path.join(AUDIT_FOLDER, 'parameter_update_log.txt'),    
+}
+
+# ==============================================================================
+# 5. THREADING SETTINGS
+THREADING_CONFIG = {
+    'max_workers': 4,         
+    'monitor_interval': 1,    
+}
+
+# ==============================================================================
+# 6. DB CONNECTION
+DB_CONFIG = {
+    'dsn': 'ECLUATFSDB',
+    'username': 'eclappusr',
+    'password': 'Abcdef123456',
+    'database': 'ey_ecl',
+}
+
+DB_DSN = DB_CONFIG['dsn']
+DB_USERNAME = DB_CONFIG['username']
+DB_PASSWORD = DB_CONFIG['password']
+DB_NAME = DB_CONFIG['database']
+
+# ==============================================================================
+# 7. LDAP CONNECTION
+LDAP_CONFIG = {
+    'server': 'ldap://10.30.244.12:389',
+    'bind_dn': 'CN=svreclappusr, OU=Service Accounts,OU=Tier1,OU=Admin,OU=HKG,DC=hkg,DC=ho,DC=cncb2',
+    'bind_password': os.getenv('LDAP_BIND_PASSWORD', ''),
+    'search_base': 'OU=User Accounts,OU=HKG,DC=hkg,DC=ho,DC=cncb2',
+    'connection_timeout': 10,
+}
+
+LDAP_SERVER = LDAP_CONFIG['server']
+LDAP_BIND_DN = LDAP_CONFIG['bind_dn']
+LDAP_BIND_PASSWORD = LDAP_CONFIG['bind_password']
+LDAP_SEARCH_BASE = LDAP_CONFIG['search_base']
+
+# ==============================================================================
+# 8. LOG SETTINGS
+LOG_CONFIG = {
+    'level': logging.INFO,
+    'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    'dir': Path(__file__).parent / 'logs',
+    'file': 'backend_server.log'
+}
+
+################################################################################################################################################################
+#                           BASIC SETTINGS
+################################################################################################################################################################
+"""
+This section contains 
+
+Configuration Categories:
+1. Logging Settings          - Check the log via sudo journalctl -u flaskapp -n 100 --no-pager
+2. Threading Settings        - 
+3. Polling Settings          - 
+"""
+# ==============================================================================
+# 1. LOGGING SETTINGS
+log_dir = LOG_CONFIG['dir']
 log_dir.mkdir(exist_ok=True)
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=LOG_CONFIG['level'],
+    format=LOG_CONFIG['format'],
     handlers=[
-        logging.FileHandler(log_dir / 'backend_server.log'),
+        logging.FileHandler(log_dir / LOG_CONFIG['file']),
         logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
 
-
-############################################################################ Debugs
-@app.before_request
-def log_request():
-    logger.info(f"Request: {request.method} {request.path}")
-@app.after_request
-
-def log_response_info(response):
-    logger.info(f"Response: {response.status}")
-    return response
-
-
-############################################################################ Set-ups
-# Base upload folder
-BASE_UPLOAD_FOLDER = r'/u01/Apps/EY_working/ECL_UI_v0.1/interim/'
-
-# Base approved folder
-BASE_APPROVED_FOLDER = r'/u01/Apps/EY_working/ECL_UI_v0.1/approved/'
-
-# Base ECL Engine folder
-BASE_ECL_ENGINE = r'/u01/Apps/EY_working/ECL_Engine_v0.4/'
-CONFIG_FILE_PATH = os.path.join(BASE_ECL_ENGINE, 'run_config_file.json')
-
-# Report file paths
-REPORT_FILES = {
-    'ecl_monthly': 'reporting_ecl_result_to_rmg.xlsx',
-    'ecl_summary': 'reporting_ecl_result_summary.xlsx',
-    'bu_excel': [
-        'ecl_result_by_BU_PBG-BB.xlsx',
-        'ecl_result_by_BU_PBG-NON-BB.xlsx',
-        'ecl_result_by_BU_TMG.xlsx',
-        'ecl_result_by_BU_WBG.xlsx'
-    ]
-}
-
-############################################################################ Threading
+# ==============================================================================
+# 2. THREADING SETTINGS
 task_queue = Queue()
 task_status: Dict[str, dict] = {}
-executor = ProcessPoolExecutor(max_workers=4)
-future_to_task_id = {}  # Future: task_id
+executor = ProcessPoolExecutor(max_workers=THREADING_CONFIG['max_workers'])
+future_to_task_id = {} 
 future_lock = threading.Lock()
 
-############################################################################ Polling
+# ==============================================================================
+# 3. POLLING SETTINGS
 def format_timestamp_for_display(timestamp):
     """Format timestamp from YYYYMMDDHHMMSS to YYYY-MM-DD HH:MM:SS"""
     if not timestamp or len(timestamp) != 14:
@@ -104,26 +194,23 @@ def process_ecl_task(command: str, data: dict):
     logger.info(f"Environment variables: {dict(os.environ)}")
     logger.info(f"Process ID: {os.getpid()}")
     
-    # Check if main_ui.py exists
-    main_py_path = os.path.join(BASE_ECL_ENGINE, "main_ui.py")
+    # Check if ECL main script exists
+    main_py_path = os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG['main_script'])
     if not os.path.exists(main_py_path):
-        error_msg = f"main_ui.py not found at {main_py_path}"
+        error_msg = f"ECL main script not found at {main_py_path}"
         logger.error(error_msg)
         return {'status': 'Failed', 'error': error_msg}
     
     # Check if main_ui.py is executable
     if not os.access(main_py_path, os.R_OK):
-        error_msg = f"main_ui.py is not readable at {main_py_path}"
+        error_msg = f"ECL main script is not readable at {main_py_path}"
         logger.error(error_msg)
         return {'status': 'Failed', 'error': error_msg}
-    
-    logger.info(f"main_ui.py exists and is readable at {main_py_path}")
     
     try:
         # Use subprocess.run with nohup to make ECL process independent of Gunicorn
         # This is the simplest solution to prevent termination by Gunicorn restart
         nohup_command = f"nohup {command} > /tmp/ecl_{os.getpid()}.log 2>&1"
-        
         logger.info(f"Executing nohup command: {nohup_command}")
         
         process = subprocess.run(
@@ -216,13 +303,21 @@ def monitor_futures():
 monitor_thread = threading.Thread(target=monitor_futures, daemon=True)
 monitor_thread.start()
 
-############################################################################ DB-Connection
-DB_DSN = 'ECLSITFSDB'
-DB_USERNAME = 'eclappusr'
-DB_PASSWORD = 'Abcdef123456'
-DB_NAME = 'ey_test'
+################################################################################################################################################################
+#                           DB FUNCTIONS
+################################################################################################################################################################
+"""
+This section contains 
 
-#============================================= Test =============================================
+Configuration Categories:
+1. Test                       - 
+2. Parameter                  - 
+3. Run Management             - 
+4. Role Management            -  
+5. Initialize DB Tables       -  
+"""
+# ==============================================================================
+# 1. TEST
 def test_db_connection():
     """Test database connection and log the result"""
     try:
@@ -231,12 +326,11 @@ def test_db_connection():
         # Test basic connection
         cursor.execute("SELECT @@VERSION")
         version = cursor.fetchone()
-        logger.info(f"Database connection successful. SQL Server version: {version[0] if version else 'Unknown'}")
         # Check if target database exists
         cursor.execute(f"SELECT DB_ID('{DB_NAME}') as db_id")
         db_id = cursor.fetchone()[0]
         if not db_id:
-            logger.error(f"Target database '{DB_NAME}' does not exist!")
+            logger.error(f"Target database '{DB_NAME}' does not exist")
             return False
         conn.close()
         return True
@@ -244,7 +338,8 @@ def test_db_connection():
         logger.error(f"Database connection Failed: {str(e)}")
         return False
 
-#============================================= Parameter =============================================
+# ==============================================================================
+# 2. PARAMETER
 def create_ui_parameter_table():
     """Create the UI_Parameter_records table if it doesn't exist"""
     try:
@@ -306,7 +401,6 @@ def create_prerun_validation_table():
         """)
         table_exists = cursor.fetchone()[0] > 0
         if table_exists:
-            logger.info("UI_prerun_validation_records table already exists")
             # Check if new columns exist, if not add them
             try:
                 cursor.execute(f"""
@@ -414,72 +508,8 @@ def get_review_records():
         logger.error(f"Error getting review records: {str(e)}")
         return []
 
-def copy_folder_to_approved(source_folder_path):
-    """
-    Copy a folder from interim to approved directory
-    """
-    try:
-        if not os.path.exists(source_folder_path):
-            logger.error(f"Source folder does not exist: {source_folder_path}")
-            return {'status': 'Failed', 'error': 'Source folder does not exist'}
-        
-        # Create approved folder if it doesn't exist
-        os.makedirs(BASE_APPROVED_FOLDER, exist_ok=True)
-        
-        # Get the folder name from the source path
-        folder_name = os.path.basename(source_folder_path)
-        destination_path = os.path.join(BASE_APPROVED_FOLDER, folder_name)
-        
-        # Check if destination already exists
-        if os.path.exists(destination_path):
-            logger.warning(f"Destination folder already exists: {destination_path}")
-            return {'status': 'Failed', 'error': 'Destination folder already exists'}
-        
-        # Copy the entire folder
-        shutil.copytree(source_folder_path, destination_path)
-        logger.info(f"Successfully copied folder from {source_folder_path} to {destination_path}")
-        return {'status': 'success', 'destination': destination_path}
-    
-    except Exception as e:
-        logger.error(f"Error copying folder to approved: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
- 
-def copy_folder_to_param_path(source_folder_path):
-    """
-    Copy files from approved folder to PARAM_PATH
-    """
-    try:
-        if not os.path.exists(source_folder_path):
-            logger.error(f"Source folder does not exist: {source_folder_path}")
-            return {'status': 'Failed', 'error': 'Source folder does not exist'}
-
-        # Read the config file to get PARAM_PATH
-        import json
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config = json.load(f)
-        param_path = config['RUN_SETTING']['PARAM_PATH']
-
-        # Create PARAM_PATH if it doesn't exist
-        os.makedirs(param_path, exist_ok=True)
-
-        copied_files = []
-        # Copy all files from the source folder to PARAM_PATH
-        for file_name in os.listdir(source_folder_path):
-            file_path = os.path.join(source_folder_path, file_name)
-            if os.path.isfile(file_path):
-                dest_path = os.path.join(param_path, file_name)
-                shutil.copy2(file_path, dest_path)
-                copied_files.append(file_name)
-                logger.info(f"Copied {file_name} to PARAM_PATH")
-
-        logger.info(f"Successfully copied {len(copied_files)} files from {source_folder_path} to {param_path}")
-        return {'status': 'success', 'copied_files': copied_files, 'param_path': param_path}
-
-    except Exception as e:
-        logger.error(f"Error copying folder to PARAM_PATH: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
-
-#============================================= Run Management =============================================
+# ==============================================================================
+# 3. RUN MANAGEMENT
 def create_ui_eclengine_table():
     """Create the UI_eclengine_records table if it doesn't exist"""
     try:
@@ -824,7 +854,8 @@ def update_reporting_status_in_db(task_id, status):
         except Exception as debug_e:
             logger.error(f"Error during debug query: {str(debug_e)}")
  
-#============================================= Role Management =============================================
+# ==============================================================================
+# 4. ROLE MANAGEMENT
 def create_ui_user_maintenance_table():
     """Create the UI_user_maintenance table if it doesn't exist"""
     try:
@@ -1169,6 +1200,30 @@ def get_role_records():
         logger.error(f"Error getting role records: {str(e)}")
         return []
 
+def initialize_role_function_tables():
+    """Create role function tables for all existing roles"""
+    try:
+        # Get all existing roles
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT role_name
+            FROM [{DB_NAME}].[dbo].[UI_role_maintenance]
+            WHERE status = 'Active'
+        """)
+        roles = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        # Create role function table for each role
+        for role_name in roles:
+            logger.info(f"Initializing role function table for role: {role_name}")
+            create_ui_role_function_table(role_name)
+            
+        return True
+    except Exception as e:
+        logger.error(f"Error initializing role function tables: {str(e)}")
+        return False
+
 def update_role_record(role_id, role_name, status, updated_by):
     """Update role record in database"""
     try:
@@ -1332,8 +1387,144 @@ def update_role_function_record(role_name, function_name, status, updated_by):
         logger.error(f"Error updating role-function record: {str(e)}")
         return False
 
-############################################################################ Main-Functions
-#============================================= Parameter =============================================
+# ==============================================================================
+# 5. INITIALIZE DB TABLES
+logger.info("Initializing database tables...")
+try:
+    if test_db_connection():
+        logger.info("Database connection successful, creating tables if needed...")
+        create_ui_parameter_table()
+        create_ui_user_maintenance_table()
+        create_ui_role_maintenance_table()
+        create_ui_function_maintenance_table()
+        create_prerun_validation_table()
+        create_ui_eclengine_table()
+        create_reporting_records_table()
+        initialize_role_function_tables()
+        logger.info("Database table initialization completed successfully")
+    else:
+        logger.warning("Database connection failed during initialization")
+except Exception as e:
+    logger.error(f"Error during database initialization: {str(e)}")
+
+################################################################################################################################################################
+#                           MAIN FUNCTIONS
+################################################################################################################################################################
+"""
+This section contains 
+
+Configuration Categories:
+1. Parameter                 - 
+2. Pre-run Validation        - 
+3. Run Management            -  
+4. Reporting                 -  
+5. Role Management           -  
+6. Audit Trail               -  
+"""
+# ==============================================================================
+# 1. PARAMETER
+def copy_interim_to_approved(source_folder_path):
+    """
+    Copy a folder from interim to approved directory
+    """
+    try:
+        if not os.path.exists(source_folder_path):
+            logger.error(f"Source folder does not exist: {source_folder_path}")
+            return {'status': 'Failed', 'error': 'Source folder does not exist'}
+        
+        # Create approved folder if it doesn't exist
+        os.makedirs(BASE_APPROVED_FOLDER, exist_ok=True)
+        
+        # Get the folder name from the source path
+        folder_name = os.path.basename(source_folder_path)
+        destination_path = os.path.join(BASE_APPROVED_FOLDER, folder_name)
+        
+        # Check if destination already exists
+        if os.path.exists(destination_path):
+            logger.warning(f"Destination folder already exists: {destination_path}")
+            return {'status': 'Failed', 'error': 'Destination folder already exists'}
+        
+        # Copy the entire folder
+        shutil.copytree(source_folder_path, destination_path)
+        logger.info(f"Successfully copied folder from {source_folder_path} to {destination_path}")
+        return {'status': 'success', 'destination': destination_path}
+    
+    except Exception as e:
+        logger.error(f"Error copying folder to approved: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+ 
+def copy_approved_to_param_path(source_folder_path):
+    """
+    Copy files from approved folder to PARAM_PATH
+    """
+    try:
+        if not os.path.exists(source_folder_path):
+            logger.error(f"Source folder does not exist: {source_folder_path}")
+            return {'status': 'Failed', 'error': 'Source folder does not exist'}
+
+        # Read the config file to get PARAM_PATH
+        import json
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config = json.load(f)
+        param_path = config['RUN_SETTING']['PARAM_PATH']
+
+        # Create PARAM_PATH if it doesn't exist
+        os.makedirs(param_path, exist_ok=True)
+
+        copied_files = []
+        # Copy all files from the source folder to PARAM_PATH
+        for file_name in os.listdir(source_folder_path):
+            file_path = os.path.join(source_folder_path, file_name)
+            if os.path.isfile(file_path):
+                dest_path = os.path.join(param_path, file_name)
+                shutil.copy2(file_path, dest_path)
+                copied_files.append(file_name)
+                logger.info(f"Copied {file_name} to PARAM_PATH")
+
+        logger.info(f"Successfully copied {len(copied_files)} files from {source_folder_path} to {param_path}")
+        return {'status': 'success', 'copied_files': copied_files, 'param_path': param_path}
+
+    except Exception as e:
+        logger.error(f"Error copying folder to PARAM_PATH: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+
+def copy_interim_to_param_path(selected_parameters: str, selected_corrections: str):
+    """
+    Copy all files from selected parameter and adjustment folders to PARAM_PATH
+    """
+    try:
+        # Read the config file to get PARAM_PATH
+        import json
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config = json.load(f)
+        param_path = config['RUN_SETTING']['PARAM_PATH']
+        copied_files = []
+        # Copy files from selected parameters folder
+        if selected_parameters:
+            param_folder = os.path.join(BASE_UPLOAD_FOLDER, selected_parameters)
+            if os.path.exists(param_folder):
+                for file_name in os.listdir(param_folder):
+                    file_path = os.path.join(param_folder, file_name)
+                    if os.path.isfile(file_path):
+                        dest_path = os.path.join(param_path, file_name)
+                        shutil.copy2(file_path, dest_path)
+                        copied_files.append(f"Parameter: {file_name}")
+        # Copy files from selected corrections folder
+        if selected_corrections:
+            adj_folder = os.path.join(BASE_UPLOAD_FOLDER, selected_corrections)
+            if os.path.exists(adj_folder):
+                for file_name in os.listdir(adj_folder):
+                    file_path = os.path.join(adj_folder, file_name)
+                    if os.path.isfile(file_path):
+                        dest_path = os.path.join(param_path, file_name)
+                        shutil.copy2(file_path, dest_path)
+                        copied_files.append(f"Adjustment: {file_name}")
+        logger.info(f"Copied files to PARAM_PATH: {copied_files}")
+        return {'status': 'success', 'copied_files': copied_files}
+    except Exception as e:
+        logger.error(f"Error copying files to PARAM_PATH: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+
 # Parameter: Upload File
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -1505,7 +1696,7 @@ def update_approval_status():
             log_parameter_update(checker, "Approve", file_type, file_path)
         
             # Step 1: Copy to approved directory
-            copy_result = copy_folder_to_approved(file_path)
+            copy_result = copy_interim_to_approved(file_path)
             if copy_result['status'] != 'success':
                 logger.error(f"Failed to copy folder to approved directory for record {record_id}: {copy_result['error']}")
                 return jsonify({
@@ -1515,7 +1706,7 @@ def update_approval_status():
         
             # Step 2: Copy from approved directory to PARAM_PATH
             approved_folder_path = copy_result['destination']
-            copy_to_param_result = copy_folder_to_param_path(approved_folder_path)
+            copy_to_param_result = copy_approved_to_param_path(approved_folder_path)
             if copy_to_param_result['status'] == 'success':
                 logger.info(f"Record {record_id} approved, folder copied to approved directory and files copied to PARAM_PATH")
                 return jsonify({
@@ -1536,38 +1727,6 @@ def update_approval_status():
     except Exception as e:
         logger.error(f"Error updating approval status: {str(e)}")
         return jsonify({'error': f'Error updating approval status: {str(e)}'}), 500
-
-# Move approved files
-@app.route('/get_approved_files', methods=['GET'])
-def get_approved_files():
-    try:
-        file_type = request.args.get('type', 'all')  # 'parameter', 'adjustment', or 'all'
-        # Check if approved folder exists
-        if not os.path.exists(BASE_APPROVED_FOLDER):
-            return jsonify({
-                'files': [],
-                'base_path': BASE_APPROVED_FOLDER,
-                'message': 'Approved folder does not exist yet'
-            }), 200
-        
-        # List all directories in the approved folder
-        all_dirs = [d for d in os.listdir(BASE_APPROVED_FOLDER)
-                   if os.path.isdir(os.path.join(BASE_APPROVED_FOLDER, d))]
-        # Filter based on file type
-        if file_type == 'parameter':
-            files = [d for d in all_dirs if d.startswith('par_')]
-        elif file_type == 'adjustment':
-            files = [d for d in all_dirs if d.startswith('adj_')]
-        else:
-            files = all_dirs
-        # Sort files by timestamp (newest first)
-        files.sort(reverse=True)
-        return jsonify({
-            'files': files,
-            'base_path': BASE_APPROVED_FOLDER
-        }), 200
-    except Exception as e:
-        return jsonify({'error': f'Error getting approved file list: {str(e)}'}), 500
 
 # Parameter: Download files when click "Download" button
 @app.route('/download_files/<record_id>', methods=['GET'])
@@ -1614,7 +1773,8 @@ def download_files(record_id):
     except Exception as e:
         return jsonify({'error': f'Error downloading files: {str(e)}'}), 500
  
-#============================================= Pre-run Validation =============================================
+# ==============================================================================
+# 2. PRE-RUN VALIDATION
 def save_prerun_validation_record(task_id: str, maker: str, time: datetime, type_: str, category: str, timestamp: str, upload_timestamp: str = '', upload_type: str = ''):
     """Save pre-run validation record to database"""
     try:
@@ -1624,7 +1784,7 @@ def save_prerun_validation_record(task_id: str, maker: str, time: datetime, type
         cursor.execute(f"""
             INSERT INTO [{DB_NAME}].[dbo].[UI_prerun_validation_records]
             (task_id, maker, time, type, category, action, status, timestamp, upload_timestamp, upload_type)
-            VALUES (?, ?, ?, ?, ?, 'Pre-run Validation', 'running', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, 'Pre-run Validation', 'Running', ?, ?, ?)
         """, (task_id, maker, time, type_, category, timestamp, upload_timestamp, upload_type))
         conn.close()
         logger.info(f"Successfully saved pre-run validation record: {task_id}")
@@ -1730,7 +1890,7 @@ def start_prerun_validation():
         timestamp = config_result.get('timestamp', '')
         
         # Copy selected files to PARAM_PATH for validation
-        copy_result = copy_files_to_param_path(parameter_folder, adjustment_folder)
+        copy_result = copy_interim_to_param_path(parameter_folder, adjustment_folder)
         if copy_result['status'] == 'Failed':
             return jsonify({
                 'error': f'Failed to copy files to PARAM_PATH: {copy_result["error"]}'
@@ -1778,7 +1938,7 @@ def start_prerun_validation():
             return jsonify({'error': 'Failed to save validation record to database'}), 500
         
         # Prepare command with new validation config file
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
+        command = f'{ECL_ENGINE_CONFIG["python_executable"]} {os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG["main_script"])} --configPath {new_config_path}'
         logger.info(f"Executing pre-run validation command: {command}")
         logger.info(f"Working directory: {BASE_ECL_ENGINE}")
         logger.info(f"Using new validation config file: {new_config_path}")
@@ -1846,6 +2006,44 @@ def get_prerun_validation_status(task_id):
         logger.error(f"Error getting pre-run validation status: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/get_prerun_validation_records', methods=['GET'])
+def get_prerun_validation_records():
+    """Get all pre-run validation records"""
+    try:
+        create_prerun_validation_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, task_id, maker, time, type, category, action, status, timestamp, upload_timestamp, upload_type, created_at, completed_at
+            FROM [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+            ORDER BY created_at DESC
+        """)
+        
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'task_id': row[1],
+                'maker': row[2],
+                'time': row[3].strftime('%Y-%m-%d %H:%M:%S') if row[3] else '',
+                'type': row[4],
+                'category': row[5] or '',
+                'action': row[6],
+                'status': row[7],
+                'timestamp': row[8],
+                'upload_timestamp': row[9] or '',
+                'upload_type': row[10] or '',
+                'created_at': row[11].strftime('%Y-%m-%d %H:%M:%S') if row[11] else '',
+                'completed_at': row[12].strftime('%Y-%m-%d %H:%M:%S') if row[12] else ''
+            })
+        
+        conn.close()
+        return jsonify({'records': records})
+    
+    except Exception as e:
+        logger.error(f"Error getting pre-run validation records: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/download_prerun_validation_logs/<task_id>', methods=['GET'])
 def download_prerun_validation_logs(task_id):
     """Download pre-run validation logs (01_log folder)"""
@@ -1857,8 +2055,7 @@ def download_prerun_validation_logs(task_id):
         
         # Construct path to 01_log folder
         timestamp = record['timestamp']
-        base_output_path = '/u01/Apps/EY_working/99_data/03_output_folder'
-        timestamp_folder = f"{base_output_path}/{timestamp}"
+        timestamp_folder = os.path.join(BASE_OUTPUT_FOLDER, timestamp)
         
         # Look for the automatically created folder structure
         log_folder_path = None
@@ -1900,85 +2097,6 @@ def download_prerun_validation_logs(task_id):
         logger.error(f"Error downloading pre-run validation logs: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/get_prerun_validation_records', methods=['GET'])
-def get_prerun_validation_records():
-    """Get all pre-run validation records"""
-    try:
-        create_prerun_validation_table()
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT id, task_id, maker, time, type, category, action, status, timestamp, upload_timestamp, upload_type, created_at, completed_at
-            FROM [{DB_NAME}].[dbo].[UI_prerun_validation_records]
-            ORDER BY created_at DESC
-        """)
-        
-        records = []
-        for row in cursor.fetchall():
-            records.append({
-                'id': row[0],
-                'task_id': row[1],
-                'maker': row[2],
-                'time': row[3].strftime('%Y-%m-%d %H:%M:%S') if row[3] else '',
-                'type': row[4],
-                'category': row[5] or '',
-                'action': row[6],
-                'status': row[7],
-                'timestamp': row[8],
-                'upload_timestamp': row[9] or '',
-                'upload_type': row[10] or '',
-                'created_at': row[11].strftime('%Y-%m-%d %H:%M:%S') if row[11] else '',
-                'completed_at': row[12].strftime('%Y-%m-%d %H:%M:%S') if row[12] else ''
-            })
-        
-        conn.close()
-        return jsonify({'records': records})
-    
-    except Exception as e:
-        logger.error(f"Error getting pre-run validation records: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/get_prerun_validation_by_folder/<folder_name>', methods=['GET'])
-def get_prerun_validation_by_folder(folder_name):
-    """Get pre-run validation record by folder name"""
-    try:
-        # Ensure table exists first
-        create_prerun_validation_table()
-        
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        
-        # Search by either parameter_folder or adjustment_folder
-        cursor.execute(f"""
-            SELECT task_id, parameter_folder, adjustment_folder, timestamp, status, maker, created_at, completed_at
-            FROM [{DB_NAME}].[dbo].[UI_prerun_validation_records]
-            WHERE parameter_folder = ? OR adjustment_folder = ?
-            ORDER BY created_at DESC
-        """, (folder_name, folder_name))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            return jsonify({
-                'record': {
-                    'task_id': row[0],
-                    'parameter_folder': row[1],
-                    'adjustment_folder': row[2],
-                    'timestamp': row[3],
-                    'status': row[4],
-                    'maker': row[5],
-                    'created_at': row[6].strftime('%Y-%m-%d %H:%M:%S') if row[6] else '',
-                    'completed_at': row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else ''
-                }
-            })
-        
-        return jsonify({'record': None})
-    
-    except Exception as e:
-        logger.error(f"Error getting pre-run validation record by folder: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/download_prerun_validation_report/<task_id>', methods=['GET'])
 def download_prerun_validation_report(task_id):
     """Download pre-run validation report (04_report folder)"""
@@ -1991,8 +2109,7 @@ def download_prerun_validation_report(task_id):
 
         # Construct path to 04_report folder
         timestamp = record['timestamp']
-        base_output_path = '/u01/Apps/EY_working/99_data/03_output_folder'
-        timestamp_folder = f"{base_output_path}/{timestamp}"
+        timestamp_folder = os.path.join(BASE_OUTPUT_FOLDER, timestamp)
         
         # Look for the automatically created folder structure
         report_folder_path = None
@@ -2034,95 +2151,71 @@ def download_prerun_validation_report(task_id):
         logger.error(f"Error downloading pre-run validation report: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-#============================================= Run Management =============================================
-# Run Management: Select Parameters and Data Correction
-@app.route('/get_uploaded_files', methods=['GET'])
-def get_uploaded_files():
+# ==============================================================================
+# 3. RUN MANAGEMENT
+def copy_original_data_only(original_timestamp: str, new_timestamp: str, base_output_path: str):
+    """
+    Copy only the original data (reportingdate_yymmdd folder) to new location
+    This ensures data isolation by not copying any derived results (reports, resumes)
+    """
     try:
-        file_type = request.args.get('type', 'all')  # 'parameter', 'adjustment', 'resume_config', or 'all'
-        # List all directories in the upload folder
-        all_dirs = [d for d in os.listdir(BASE_UPLOAD_FOLDER)
-                   if os.path.isdir(os.path.join(BASE_UPLOAD_FOLDER, d))]
-        # Filter based on file type
-        if file_type == 'parameter':
-            files = [d for d in all_dirs if d.startswith('par_')]
-        elif file_type == 'adjustment':
-            files = [d for d in all_dirs if d.startswith('adj_')]
-        elif file_type == 'resume_config':
-            # Get all config files from ECL_Engine directory
-            config_files = []
-            if os.path.exists(BASE_ECL_ENGINE):
-                for file_name in os.listdir(BASE_ECL_ENGINE):
-                    if file_name.startswith('run_config_file_') and file_name.endswith('.json'):
-                        config_files.append(file_name)
-            # Sort files by timestamp (newest first)
-            config_files.sort(reverse=True)
-            return jsonify({
-                'files': config_files,
-                'base_path': BASE_ECL_ENGINE
-            }), 200
-        elif file_type == 'report_config':
-            # Get all config files from ECL_Engine directory (same as resume_config)
-            config_files = []
-            if os.path.exists(BASE_ECL_ENGINE):
-                for file_name in os.listdir(BASE_ECL_ENGINE):
-                    if file_name.startswith('run_config_file_') and file_name.endswith('.json'):
-                        config_files.append(file_name)
-            # Sort files by timestamp (newest first)
-            config_files.sort(reverse=True)
-            return jsonify({
-                'files': config_files,
-                'base_path': BASE_ECL_ENGINE
-            }), 200
+        import shutil
+        
+        # Construct paths
+        if '/03_output_folder' in base_output_path:
+            base_path = base_output_path.split('/03_output_folder')[0]
+            original_timestamp_path = f"{base_path}/03_output_folder/{original_timestamp}"
+            new_timestamp_path = f"{base_path}/03_output_folder/{new_timestamp}"
         else:
-            files = all_dirs
-        # Sort files by timestamp (newest first)
-        files.sort(reverse=True)
-        return jsonify({
-            'files': files,
-            'base_path': BASE_UPLOAD_FOLDER
-        }), 200
+            original_timestamp_path = f"{base_output_path}/{original_timestamp}"
+            new_timestamp_path = f"{base_output_path}/{new_timestamp}"
+        
+        # Create new timestamp folder
+        os.makedirs(new_timestamp_path, exist_ok=True)
+        
+        # Find the folder containing underscore (reportingdate_yymmdd format) in original timestamp folder
+        if not os.path.exists(original_timestamp_path):
+            return {'status': 'Failed', 'error': f'Original timestamp folder does not exist: {original_timestamp_path}'}
+        
+        # Look for folder containing underscore (reportingdate_yymmdd format)
+        reporting_date_folder = None
+        available_items = []
+        for item in os.listdir(original_timestamp_path):
+            item_path = os.path.join(original_timestamp_path, item)
+            available_items.append(item)
+            if os.path.isdir(item_path) and '_' in item:
+                # This looks like a reportingdate_yymmdd folder (contains underscore)
+                reporting_date_folder = item
+                break
+        
+        if not reporting_date_folder:
+            logger.error(f"No folder with underscore found in {original_timestamp_path}")
+            logger.error(f"Available items in {original_timestamp_path}: {available_items}")
+            return {'status': 'Failed', 'error': f'No folder with underscore found in {original_timestamp_path}. Available items: {available_items}'}
+        
+        # Copy only the folder containing underscore (reportingdate_yymmdd format)
+        # Extract reporting_date part from original folder name (e.g., "20241231" from "20241231_20251016")
+        reporting_date_part = reporting_date_folder.split('_')[0]
+        
+        # Extract date from new_timestamp (first 8 characters)
+        new_date = new_timestamp[:8]
+        
+        # Build new folder name with current date (e.g., "20241231_20251017")
+        new_folder_name = f"{reporting_date_part}_{new_date}"
+        
+        original_reporting_path = os.path.join(original_timestamp_path, reporting_date_folder)
+        new_reporting_path = os.path.join(new_timestamp_path, new_folder_name)
+        
+        logger.info(f"Copying original data from {original_reporting_path} to {new_reporting_path}")
+        logger.info(f"Renamed folder from {reporting_date_folder} to {new_folder_name}")
+        shutil.copytree(original_reporting_path, new_reporting_path)
+        
+        logger.info(f"Successfully copied original data to: {new_reporting_path}")
+        return {'status': 'success', 'copied_path': new_reporting_path}
+    
     except Exception as e:
-        return jsonify({'error': f'Error getting file list: {str(e)}'}), 500
-
-# Run Management: Folder maintenance
-def copy_files_to_param_path(selected_parameters: str, selected_corrections: str):
-    """
-    Copy all files from selected parameter and adjustment folders to PARAM_PATH
-    """
-    try:
-        # Read the config file to get PARAM_PATH
-        import json
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config = json.load(f)
-        param_path = config['RUN_SETTING']['PARAM_PATH']
-        copied_files = []
-        # Copy files from selected parameters folder
-        if selected_parameters:
-            param_folder = os.path.join(BASE_UPLOAD_FOLDER, selected_parameters)
-            if os.path.exists(param_folder):
-                for file_name in os.listdir(param_folder):
-                    file_path = os.path.join(param_folder, file_name)
-                    if os.path.isfile(file_path):
-                        dest_path = os.path.join(param_path, file_name)
-                        shutil.copy2(file_path, dest_path)
-                        copied_files.append(f"Parameter: {file_name}")
-        # Copy files from selected corrections folder
-        if selected_corrections:
-            adj_folder = os.path.join(BASE_UPLOAD_FOLDER, selected_corrections)
-            if os.path.exists(adj_folder):
-                for file_name in os.listdir(adj_folder):
-                    file_path = os.path.join(adj_folder, file_name)
-                    if os.path.isfile(file_path):
-                        dest_path = os.path.join(param_path, file_name)
-                        shutil.copy2(file_path, dest_path)
-                        copied_files.append(f"Adjustment: {file_name}")
-        logger.info(f"Copied files to PARAM_PATH: {copied_files}")
-        return {'status': 'success', 'copied_files': copied_files}
-    except Exception as e:
-        logger.error(f"Error copying files to PARAM_PATH: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
-# Run Management: Generate new config file
+        logger.error(f"Failed to copy original data: {str(e)}")
+        return {'status': 'Failed', 'error': f'Failed to copy original data: {str(e)}'}
 
 def generate_new_config_file(reporting_date: str, run_mode: str, ui_timestamp: str = None):
     """
@@ -2178,61 +2271,62 @@ def generate_new_config_file(reporting_date: str, run_mode: str, ui_timestamp: s
     except Exception as e:
         logger.error(f"Error generating new config file: {str(e)}")
         return {'status': 'Failed', 'error': str(e)}
- 
-def copy_original_data_only(original_timestamp: str, new_timestamp: str, base_output_path: str):
+
+def generate_prerun_validation_config_file(parameter_folder: str = None, adjustment_folder: str = None, ui_timestamp: str = None):
     """
-    Copy only the original data (reportingdate_yymmdd folder) to new location
-    This ensures data isolation by not copying any derived results (reports, resumes)
+    Generate a new config file for pre-run validation with fixed settings
     """
     try:
-        import shutil
+        # Read the original config file
+        import json
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config = json.load(f)
         
-        # Construct paths
+        # Fixed settings for pre-run validation
+        config['RUN_SETTING']['RUN_MODE'] = '2'
+        config['RUN_SETTING']['SANITY_CHECK_MODE'] = '2.1'
+        
+        # Generate new timestamp for validation run
+        if ui_timestamp:
+            timestamp = ui_timestamp
+        else:
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        
+        # Create new OUTPUT_PATH with validation timestamp
+        base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
+        # Extract the base path without any existing timestamp folders
         if '/03_output_folder' in base_output_path:
             base_path = base_output_path.split('/03_output_folder')[0]
-            original_timestamp_path = f"{base_path}/03_output_folder/{original_timestamp}"
-            new_timestamp_path = f"{base_path}/03_output_folder/{new_timestamp}"
+            new_output_path = f"{base_path}/03_output_folder/{timestamp}"
         else:
-            original_timestamp_path = f"{base_output_path}/{original_timestamp}"
-            new_timestamp_path = f"{base_output_path}/{new_timestamp}"
+            # Fallback if path structure is different
+            new_output_path = f"{base_path}/{timestamp}"
         
-        # Create new timestamp folder
-        os.makedirs(new_timestamp_path, exist_ok=True)
+        config['RUN_SETTING']['OUTPUT_PATH'] = new_output_path
+        logger.info(f"Modified OUTPUT_PATH for pre-run validation to: {new_output_path}")
         
-        # Find the folder containing underscore (reportingdate_yymmdd format) in original timestamp folder
-        if not os.path.exists(original_timestamp_path):
-            return {'status': 'Failed', 'error': f'Original timestamp folder does not exist: {original_timestamp_path}'}
+        # Create the new timestamp folder for validation run
+        try:
+            os.makedirs(new_output_path, exist_ok=True)
+            logger.info(f"Created/verified pre-run validation output folder: {new_output_path}")
+        except Exception as e:
+            logger.error(f"Failed to create pre-run validation output folder {new_output_path}: {str(e)}")
+            return {'status': 'Failed', 'error': f'Failed to create pre-run validation output folder: {str(e)}'}
         
-        # Look for folder containing underscore (reportingdate_yymmdd format)
-        reporting_date_folder = None
-        available_items = []
-        for item in os.listdir(original_timestamp_path):
-            item_path = os.path.join(original_timestamp_path, item)
-            available_items.append(item)
-            if os.path.isdir(item_path) and '_' in item:
-                # This looks like a reportingdate_yymmdd folder (contains underscore)
-                reporting_date_folder = item
-                break
+        # Create new config file with validation timestamp
+        new_config_filename = f'run_config_file_{timestamp}.json'
+        new_config_path = os.path.join(BASE_ECL_ENGINE, new_config_filename)
         
-        if not reporting_date_folder:
-            logger.error(f"No folder with underscore found in {original_timestamp_path}")
-            logger.error(f"Available items in {original_timestamp_path}: {available_items}")
-            return {'status': 'Failed', 'error': f'No folder with underscore found in {original_timestamp_path}. Available items: {available_items}'}
+        # Write the new validation config file
+        with open(new_config_path, 'w') as f:
+            json.dump(config, f, indent=2)
         
-        # Copy only the folder containing underscore (reportingdate_yymmdd format)
-        original_reporting_path = os.path.join(original_timestamp_path, reporting_date_folder)
-        new_reporting_path = os.path.join(new_timestamp_path, reporting_date_folder)
-        
-        logger.info(f"Copying original data from {original_reporting_path} to {new_reporting_path}")
-        shutil.copytree(original_reporting_path, new_reporting_path)
-        
-        logger.info(f"Successfully copied original data to: {new_reporting_path}")
-        return {'status': 'success', 'copied_path': new_reporting_path}
-    
+        logger.info(f"Generated new pre-run validation config file: {new_config_path}")
+        return {'status': 'success', 'config_path': new_config_path, 'timestamp': timestamp}
     except Exception as e:
-        logger.error(f"Failed to copy original data: {str(e)}")
-        return {'status': 'Failed', 'error': f'Failed to copy original data: {str(e)}'}
- 
+        logger.error(f"Error generating pre-run validation config file: {str(e)}")
+        return {'status': 'Failed', 'error': str(e)}
+
 def generate_resume_config_file(config_filename: str, resume_run_mode: str, ui_timestamp: str = None):
     """
     Generate a new config file for resume run with independent output path
@@ -2301,77 +2395,7 @@ def generate_resume_config_file(config_filename: str, resume_run_mode: str, ui_t
     except Exception as e:
         logger.error(f"Error generating resume config file: {str(e)}")
         return {'status': 'Failed', 'error': str(e)}
- 
-def generate_report_config_file(config_filename: str, report_run_mode: str, ui_timestamp: str = None):
-    """
-    Generate a new config file for report generation that copies the original output folder
-    """
-    try:
-        # Construct the full path to the existing config file
-        existing_config_path = os.path.join(BASE_ECL_ENGINE, config_filename)
-        
-        # Check if the config file exists
-        if not os.path.exists(existing_config_path):
-            return {'status': 'Failed', 'error': f'Config file not found: {config_filename}'}
-        
-        # Read the existing config file
-        import json
-        with open(existing_config_path, 'r') as f:
-            config = json.load(f)
-        
-        # Update RUN_MODE for report generation (should be 6)
-        if report_run_mode:
-            config['RUN_SETTING']['RUN_MODE'] = str(report_run_mode)
-        
-        # Extract the timestamp from the original config filename
-        original_timestamp = config_filename.replace('run_config_file_', '').replace('.json', '')
-        
-        # Get the original output path
-        original_output_path = config['RUN_SETTING']['OUTPUT_PATH']
-        logger.info(f"Original output path: {original_output_path}")
-        
-        # Verify the original output folder exists
-        if not os.path.exists(original_output_path):
-            return {'status': 'Failed', 'error': f'Original output folder does not exist: {original_output_path}'}
-        
-        # Use UI timestamp (must be provided for consistency)
-        if not ui_timestamp:
-            return {'status': 'Failed', 'error': 'UI timestamp is required for consistency'}
-        new_timestamp = ui_timestamp
-        
-        # Create new output path for the copied folder
-        base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
-        if '/03_output_folder' in base_output_path:
-            base_path = base_output_path.split('/03_output_folder')[0]
-            new_output_path = f"{base_path}/03_output_folder/{new_timestamp}"
-        else:
-            # Fallback if path structure is different
-            new_output_path = f"{base_path}/{new_timestamp}"
-        
-        # Copy only the original data (reportingdate_yymmdd folder) to ensure data isolation
-        copy_result = copy_original_data_only(original_timestamp, new_timestamp, base_output_path)
-        if copy_result['status'] == 'Failed':
-            return {'status': 'Failed', 'error': f'Failed to copy original data for report: {copy_result["error"]}'}
-        
-        # Update the config to use the new output path
-        config['RUN_SETTING']['OUTPUT_PATH'] = new_output_path
-        logger.info(f"Updated OUTPUT_PATH for report generation to: {new_output_path}")
-        
-        # Create new config file with report timestamp
-        new_config_filename = f'run_config_file_{new_timestamp}.json'
-        new_config_path = os.path.join(BASE_ECL_ENGINE, new_config_filename)
-        
-        # Write the new report config file
-        with open(new_config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-        
-        logger.info(f"Generated new report config file: {new_config_path}")
-        logger.info(f"Report will use copied output folder: {new_timestamp}")
-        return {'status': 'success', 'config_path': new_config_path, 'timestamp': new_timestamp}
-    except Exception as e:
-        logger.error(f"Error generating report config file: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
- 
+
 def generate_report_config_file_from_record(record_id, ui_timestamp):
     """
     Automatically generate report config file from review record
@@ -2390,79 +2414,91 @@ def generate_report_config_file_from_record(record_id, ui_timestamp):
         
         original_config_filename = f"run_config_file_{original_timestamp}.json"
         
+        # Get the base output path from config BEFORE generating new config
+        base_output_path = None
+        try:
+            import json
+            with open(CONFIG_FILE_PATH, 'r') as f:
+                config = json.load(f)
+            base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
+        except Exception as e:
+            logger.error(f"Failed to read config file for base output path: {str(e)}")
+            return {'status': 'Failed', 'error': f'Failed to read config file: {str(e)}'}
+        
         # 3. Use our modified function to ensure all functionality is preserved
-        config_result = generate_report_config_file(
-            config_filename=original_config_filename,
-            report_run_mode='6',  # Fixed to 6
+        config_result = generate_new_config_file(
+            reporting_date=original_record['settings'].get('reporting_date', ''),
+            run_mode='6',  # Fixed to 6
             ui_timestamp=ui_timestamp  # Use UI timestamp to ensure consistency
         )
         
-        # 4. generate_report_config_file internally will:
-        #    - Validate UI timestamp exists
-        #    - Call copy_original_data_only for data isolation
-        #    - Copy only the original reportingdate_yymmdd folder
+        if config_result['status'] == 'Failed':
+            return config_result
         
+        # 4. Copy original ECL run data to new report folder
+        # Copy original data to new location
+        copy_result = copy_original_data_only(original_timestamp, ui_timestamp, base_output_path)
+        if copy_result['status'] == 'Failed':
+            logger.error(f"Failed to copy original data for report generation: {copy_result['error']}")
+            return {'status': 'Failed', 'error': f'Failed to copy original data: {copy_result["error"]}'}
+        
+        logger.info(f"Successfully copied original ECL run data to new report folder")
         return config_result
     
     except Exception as e:
         logger.error(f"Error generating report config from record: {str(e)}")
         return {'status': 'Failed', 'error': str(e)}
- 
-def generate_prerun_validation_config_file(parameter_folder: str = None, adjustment_folder: str = None, ui_timestamp: str = None):
-    """
-    Generate a new config file for pre-run validation with fixed settings
-    """
+
+# Run Management: Select Parameters and Data Correction
+@app.route('/get_uploaded_files', methods=['GET'])
+def get_uploaded_files():
     try:
-        # Read the original config file
-        import json
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config = json.load(f)
-        
-        # Fixed settings for pre-run validation
-        config['RUN_SETTING']['RUN_MODE'] = '2'
-        config['RUN_SETTING']['SANITY_CHECK_MODE'] = '2.1'
-        
-        # Generate new timestamp for validation run
-        if ui_timestamp:
-            timestamp = ui_timestamp
+        file_type = request.args.get('type', 'all')  # 'parameter', 'adjustment', 'resume_config', or 'all'
+        # List all directories in the upload folder
+        all_dirs = [d for d in os.listdir(BASE_UPLOAD_FOLDER)
+                   if os.path.isdir(os.path.join(BASE_UPLOAD_FOLDER, d))]
+        # Filter based on file type
+        if file_type == 'parameter':
+            files = [d for d in all_dirs if d.startswith('par_')]
+        elif file_type == 'adjustment':
+            files = [d for d in all_dirs if d.startswith('adj_')]
+        elif file_type == 'resume_config':
+            # Get all config files from ECL_Engine directory
+            config_files = []
+            if os.path.exists(BASE_ECL_ENGINE):
+                for file_name in os.listdir(BASE_ECL_ENGINE):
+                    if file_name.startswith('run_config_file_') and file_name.endswith('.json'):
+                        config_files.append(file_name)
+            # Sort files by timestamp (newest first)
+            config_files.sort(reverse=True)
+            return jsonify({
+                'files': config_files,
+                'base_path': BASE_ECL_ENGINE
+            }), 200
+        elif file_type == 'report_config':
+            # Get all config files from ECL_Engine directory (same as resume_config)
+            config_files = []
+            if os.path.exists(BASE_ECL_ENGINE):
+                for file_name in os.listdir(BASE_ECL_ENGINE):
+                    if file_name.startswith('run_config_file_') and file_name.endswith('.json'):
+                        config_files.append(file_name)
+            # Sort files by timestamp (newest first)
+            config_files.sort(reverse=True)
+            return jsonify({
+                'files': config_files,
+                'base_path': BASE_ECL_ENGINE
+            }), 200
         else:
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        
-        # Create new OUTPUT_PATH with validation timestamp
-        base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
-        # Extract the base path without any existing timestamp folders
-        if '/03_output_folder' in base_output_path:
-            base_path = base_output_path.split('/03_output_folder')[0]
-            new_output_path = f"{base_path}/03_output_folder/{timestamp}"
-        else:
-            # Fallback if path structure is different
-            new_output_path = f"{base_path}/{timestamp}"
-        
-        config['RUN_SETTING']['OUTPUT_PATH'] = new_output_path
-        logger.info(f"Modified OUTPUT_PATH for pre-run validation to: {new_output_path}")
-        
-        # Create the new timestamp folder for validation run
-        try:
-            os.makedirs(new_output_path, exist_ok=True)
-            logger.info(f"Created/verified pre-run validation output folder: {new_output_path}")
-        except Exception as e:
-            logger.error(f"Failed to create pre-run validation output folder {new_output_path}: {str(e)}")
-            return {'status': 'Failed', 'error': f'Failed to create pre-run validation output folder: {str(e)}'}
-        
-        # Create new config file with validation timestamp
-        new_config_filename = f'run_config_file_{timestamp}.json'
-        new_config_path = os.path.join(BASE_ECL_ENGINE, new_config_filename)
-        
-        # Write the new validation config file
-        with open(new_config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-        
-        logger.info(f"Generated new pre-run validation config file: {new_config_path}")
-        return {'status': 'success', 'config_path': new_config_path, 'timestamp': timestamp}
+            files = all_dirs
+        # Sort files by timestamp (newest first)
+        files.sort(reverse=True)
+        return jsonify({
+            'files': files,
+            'base_path': BASE_UPLOAD_FOLDER
+        }), 200
     except Exception as e:
-        logger.error(f"Error generating pre-run validation config file: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
- 
+        return jsonify({'error': f'Error getting file list: {str(e)}'}), 500
+
 # Run Management: Run ECL Engine
 @app.route('/run_ecl_engine', methods=['POST'])
 def run_ecl_engine():
@@ -2514,7 +2550,7 @@ def run_ecl_engine():
         update_eclengine_status_in_db(task_id, 'Running')
         
         # Prepare command with new config file
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
+        command = f'{ECL_ENGINE_CONFIG["python_executable"]} {os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG["main_script"])} --configPath {new_config_path}'
         logger.info(f"Executing command: {command}")
         logger.info(f"Working directory: {BASE_ECL_ENGINE}")
         logger.info(f"Using config file: {new_config_path}")
@@ -2608,7 +2644,7 @@ def resume_ecl_engine():
         update_eclengine_status_in_db(task_id, 'Running')
         
         # Prepare command with new resume config file
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
+        command = f'{ECL_ENGINE_CONFIG["python_executable"]} {os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG["main_script"])} --configPath {new_config_path}'
         logger.info(f"Executing resume command: {command}")
         logger.info(f"Working directory: {BASE_ECL_ENGINE}")
         logger.info(f"Using new resume config file: {new_config_path}")
@@ -2645,100 +2681,6 @@ def resume_ecl_engine():
             'traceback': error_details
         }), 500
 
-# Generate Report
-@app.route('/generate_report', methods=['POST'])
-def generate_report():
-    try:
-        data = request.get_json()
-        selected_report_config = data.get('selectedReportConfig', '')
-        selected_report_run_mode = data.get('selectedReportRunMode', '')
-        report_action_comment = data.get('reportActionComment', '')
-        ui_timestamp = data.get('ui_timestamp', '')
-        
-        # Log the report generation selections
-        logger.info(f"Generating report with config file: {selected_report_config}")
-        logger.info(f"Report run mode: {selected_report_run_mode}")
-        logger.info(f"Report action comment: {report_action_comment}")
-        logger.info(f"UI timestamp: {ui_timestamp}")
-        
-        # Generate report config file that uses existing output folder
-        config_result = generate_report_config_file(selected_report_config, selected_report_run_mode, ui_timestamp)
-        if config_result['status'] == 'Failed':
-            return jsonify({
-                'error': f'Failed to generate report config file: {config_result["error"]}'
-            }), 500
-        
-        # Use the new report config file path and new timestamp
-        new_config_path = config_result['config_path']
-        new_timestamp = config_result.get('timestamp', '')  # This is the new output folder timestamp
-        
-        # Generate task ID
-        task_id = str(uuid.uuid4())
-        
-        # Assemble settings field for report generation
-        settings = json.dumps({
-            "task_id": task_id,
-            "timestamp": new_timestamp,  # Use new output folder timestamp
-            "isResume": False,
-            "isGenerateReport": True,
-            "resumedVersion": selected_report_config,
-            "runMode": selected_report_run_mode,
-            "selectedParameters": "",  # Report generation doesn't have parameters
-            "selectedCorrections": "",  # Report generation doesn't have adjustments
-            "reportingDate": "",  # Report generation doesn't have reporting date
-            "country": ""  # Report generation doesn't have country
-        })
-        
-        now_dt = datetime.now()
-        # Save to DB
-        save_eclengine_record(
-            maker=data.get('maker', 'Unknown User'),
-            time=now_dt,
-            settings=settings,
-            action=report_action_comment,
-            status='Running',
-            checker='Waiting'
-        )
-        update_eclengine_status_in_db(task_id, 'Running')
-        
-        # Prepare command with new report config file
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
-        logger.info(f"Executing report generation command: {command}")
-        logger.info(f"Working directory: {BASE_ECL_ENGINE}")
-        logger.info(f"Using new report config file: {new_config_path}")
-        logger.info(f"Report will use copied output folder: {new_timestamp}")
-        
-        # Initialize task status
-        task_status[task_id] = {
-            'status': 'Running',
-            'data': data,
-            'config_file': new_config_path,
-            'timestamp': new_timestamp,  # Use new output folder timestamp
-            'created_at': datetime.now().isoformat(),
-            'command': command,
-            'is_generate_report': True
-        }
-        
-        with future_lock:
-            future = executor.submit(process_ecl_task, command, data)
-            future_to_task_id[future] = task_id
-        
-        return jsonify({
-            'task_id': task_id,
-            'status': 'pending',
-            'timestamp': new_timestamp,  # Return new output folder timestamp
-            'config_file': new_config_path
-        }), 202
-    except Exception as e:
-        logger.error(f"Error initiating report generation: {str(e)}")
-        import traceback
-        error_details = traceback.format_exc()
-        logger.error(f"Full error traceback: {error_details}")
-        return jsonify({
-            'error': str(e),
-            'traceback': error_details
-        }), 500
- 
 # Generate Report from Record
 @app.route('/generate_report_from_record', methods=['POST'])
 def generate_report_from_record():
@@ -2765,6 +2707,11 @@ def generate_report_from_record():
         
         if original_record['status'] != 'Completed':
             return jsonify({'error': 'Only completed records can generate reports'}), 400
+        
+        # Check if run mode ends with '5'
+        run_mode = original_record['settings'].get('runMode', '')
+        if not run_mode.endswith('5'):
+            return jsonify({'error': 'Only records with run mode ending in 5 can generate reports'}), 400
         
         # Generate report config file
         config_result = generate_report_config_file_from_record(record_id, timestamp)
@@ -2805,7 +2752,7 @@ def generate_report_from_record():
         )
         
         # Prepare command
-        command = f'python3 {os.path.join(BASE_ECL_ENGINE, "main_ui.py")} --configPath {new_config_path}'
+        command = f'{ECL_ENGINE_CONFIG["python_executable"]} {os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG["main_script"])} --configPath {new_config_path}'
         logger.info(f"Executing report generation command: {command}")
         logger.info(f"Using config file: {new_config_path}")
         logger.info(f"Output will be saved to timestamp folder: {new_timestamp}")
@@ -2843,6 +2790,15 @@ def generate_report_from_record():
             'traceback': error_details
         }), 500
 
+# Run Management: Get review records from DB
+@app.route('/get_eclengine_records', methods=['GET'])
+def api_get_eclengine_records():
+    try:
+        records = get_eclengine_records()
+        return jsonify({'records': records, 'count': len(records)}), 200
+    except Exception as e:
+        return jsonify({'error': f'Error getting ECL engine records: {str(e)}'}), 500
+ 
 # Get Reporting Records
 @app.route('/get_reporting_records', methods=['GET'])
 def api_get_reporting_records():
@@ -2881,128 +2837,6 @@ def get_reporting_status(task_id):
     
     except Exception as e:
         logger.error(f"Error getting reporting status: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# Confirm Reporting Record
-@app.route('/confirm_reporting_record', methods=['POST'])
-def confirm_reporting_record():
-    """Confirm a reporting record - update status to Confirmed and set checker"""
-    try:
-        data = request.get_json()
-        task_id = data.get('task_id')
-        checker = data.get('checker')
-        
-        if not task_id or not checker:
-            return jsonify({'error': 'Missing required fields: task_id and checker'}), 400
-        
-        # Update the reporting record status and checker
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        
-        cursor.execute(f"""
-            UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
-            SET status = 'Confirmed', checker = ?
-            WHERE task_id = ?
-        """, (checker, task_id))
-        
-        rows_affected = cursor.rowcount
-        conn.close()
-        
-        if rows_affected > 0:
-            logger.info(f"Confirmed reporting record {task_id} with checker {checker}")
-            return jsonify({'message': 'Reporting record confirmed successfully'}), 200
-        else:
-            logger.warning(f"No reporting record found with task_id {task_id}")
-            return jsonify({'error': 'Reporting record not found'}), 404
-    
-    except Exception as e:
-        logger.error(f"Error confirming reporting record: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# Download Reporting Logs
-@app.route('/download_reporting_logs/<task_id>', methods=['GET'])
-def download_reporting_logs(task_id):
-    """Download reporting logs"""
-    try:
-        # Get reporting record
-        record = get_reporting_record(task_id)
-        if not record:
-            return jsonify({'error': 'Reporting record not found'}), 404
-        
-        # Build path to 01_log folder
-        timestamp = record['original_timestamp']
-        base_output_path = '/u01/Apps/EY_working/99_data/03_output_folder'
-        timestamp_folder = f"{base_output_path}/{timestamp}"
-        
-        # Find automatically created folder structure
-        log_folder_path = None
-        if os.path.exists(timestamp_folder):
-            for item in os.listdir(timestamp_folder):
-                item_path = os.path.join(timestamp_folder, item)
-                if os.path.isdir(item_path) and '_' in item:
-                    # Check if this directory contains 01_log
-                    log_path = os.path.join(item_path, '01_log')
-                    if os.path.exists(log_path):
-                        log_folder_path = log_path
-                        break
-        
-        if not log_folder_path:
-            return jsonify({'error': f'Log folder not found for timestamp: {timestamp}'}), 404
-        
-        # Create zip file of logs
-        zip_buffer = BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for root, dirs, files in os.walk(log_folder_path):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arc_name = os.path.relpath(file_path, log_folder_path)
-                    zip_file.write(file_path, arc_name)
-        
-        zip_buffer.seek(0)
-        return send_file(
-            zip_buffer,
-            mimetype='application/zip',
-            as_attachment=True,
-            download_name=f'reporting_logs_{timestamp}.zip'
-        )
-    
-    except Exception as e:
-        logger.error(f"Error downloading reporting logs: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# Download Reporting Reports
-@app.route('/download_reporting_reports/<task_id>', methods=['GET'])
-def download_reporting_reports(task_id):
-    """Download reporting reports and redirect to reporting page"""
-    try:
-        # Get reporting record
-        record = get_reporting_record(task_id)
-        if not record:
-            return jsonify({'error': 'Reporting record not found'}), 404
-        
-        if record['status'] != 'Completed':
-            return jsonify({'error': 'Report is not ready yet'}), 400
-        
-        # Return redirect information - use the generate report timestamp where reports are stored
-        # For generate report records, use the new timestamp from settings, not original_timestamp
-        settings = record.get('settings', {})
-        if isinstance(settings, str):
-            import json
-            try:
-                settings = json.loads(settings)
-            except:
-                settings = {}
-        
-        # Use the generate report timestamp (new_timestamp) instead of original_timestamp
-        report_timestamp = settings.get('timestamp', record.get('original_timestamp', ''))
-        
-        return jsonify({
-            'redirect': True,
-            'url': f'/reporting?timestamp={report_timestamp}&report_task_id={task_id}'
-        }), 200
-    
-    except Exception as e:
-        logger.error(f"Error downloading reporting reports: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Task Status Check
@@ -3053,15 +2887,78 @@ def api_save_eclengine_record():
     except Exception as e:
         return jsonify({'error': f'Error saving ECL engine record: {str(e)}'}), 500
 
-# Run Management: Get review records from DB
-@app.route('/get_eclengine_records', methods=['GET'])
-def api_get_eclengine_records():
+# Confirm Reporting Record
+@app.route('/confirm_reporting_record', methods=['POST'])
+def confirm_reporting_record():
+    """Confirm a reporting record - update status to Confirmed and set checker"""
     try:
-        records = get_eclengine_records()
-        return jsonify({'records': records, 'count': len(records)}), 200
+        data = request.get_json()
+        task_id = data.get('task_id')
+        checker = data.get('checker')
+        
+        if not task_id or not checker:
+            return jsonify({'error': 'Missing required fields: task_id and checker'}), 400
+        
+        # Update the reporting record status and checker
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+            SET status = 'Confirmed', checker = ?
+            WHERE task_id = ?
+        """, (checker, task_id))
+        
+        rows_affected = cursor.rowcount
+        conn.close()
+        
+        if rows_affected > 0:
+            logger.info(f"Confirmed reporting record {task_id} with checker {checker}")
+            return jsonify({'message': 'Reporting record confirmed successfully'}), 200
+        else:
+            logger.warning(f"No reporting record found with task_id {task_id}")
+            return jsonify({'error': 'Reporting record not found'}), 404
+    
     except Exception as e:
-        return jsonify({'error': f'Error getting ECL engine records: {str(e)}'}), 500
- 
+        logger.error(f"Error confirming reporting record: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Unconfirm Reporting Record
+@app.route('/unconfirm_reporting_record', methods=['POST'])
+def unconfirm_reporting_record():
+    """Unconfirm a reporting record - update status from Confirmed back to Completed"""
+    try:
+        data = request.get_json()
+        task_id = data.get('task_id')
+        checker = data.get('checker')
+        
+        if not task_id or not checker:
+            return jsonify({'error': 'Missing required fields: task_id and checker'}), 400
+        
+        # Update the reporting record status back to Completed
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+            SET status = 'Completed', checker = ?
+            WHERE task_id = ? AND status = 'Confirmed'
+        """, (checker, task_id))
+        
+        rows_affected = cursor.rowcount
+        conn.close()
+        
+        if rows_affected > 0:
+            logger.info(f"Unconfirmed reporting record {task_id} with checker {checker}")
+            return jsonify({'message': 'Reporting record unconfirmed successfully'}), 200
+        else:
+            logger.warning(f"No confirmed reporting record found with task_id {task_id}")
+            return jsonify({'error': 'Confirmed reporting record not found'}), 404
+    
+    except Exception as e:
+        logger.error(f"Error unconfirming reporting record: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 # Run Management: Download log files for a specific record
 @app.route('/download_log_files/<task_id>', methods=['GET'])
 def download_log_files(task_id):
@@ -3090,8 +2987,7 @@ def download_log_files(task_id):
             return jsonify({'error': 'No timestamp found for this record'}), 404
         
         # Construct the log folder path
-        base_output_path = "/u01/Apps/EY_working/99_data/03_output_folder"
-        timestamp_folder = f"{base_output_path}/{timestamp}"
+        timestamp_folder = os.path.join(BASE_OUTPUT_FOLDER, timestamp)
         
         # Look for the automatically created folder structure
         log_folder_path = None
@@ -3168,8 +3064,7 @@ def download_ecl_results(task_id):
             return jsonify({'error': 'No timestamp found for this record'}), 404
         
         # Construct the timestamp folder path
-        base_output_path = "/u01/Apps/EY_working/99_data/03_output_folder"
-        timestamp_folder = f"{base_output_path}/{timestamp}"
+        timestamp_folder = os.path.join(BASE_OUTPUT_FOLDER, timestamp)
         
         # Check if the timestamp folder exists
         if not os.path.exists(timestamp_folder):
@@ -3206,8 +3101,106 @@ def download_ecl_results(task_id):
     except Exception as e:
         logger.error(f"Error downloading ECL results for task {task_id}: {str(e)}")
         return jsonify({'error': f'Error downloading ECL results: {str(e)}'}), 500
- 
-#============================================= Reporting =============================================
+
+# Download Reporting Logs
+@app.route('/download_reporting_logs/<task_id>', methods=['GET'])
+def download_reporting_logs(task_id):
+    """Download reporting logs"""
+    try:
+        # Get reporting record
+        record = get_reporting_record(task_id)
+        if not record:
+            return jsonify({'error': 'Reporting record not found'}), 404
+        
+        # Get the new timestamp from settings (where generate report logs are stored)
+        settings = record.get('settings', {})
+        if isinstance(settings, str):
+            import json
+            try:
+                settings = json.loads(settings)
+            except:
+                settings = {}
+        
+        # Use the generate report timestamp (new_timestamp) instead of original_timestamp
+        timestamp = settings.get('timestamp', record.get('original_timestamp', ''))
+        
+        # Build path to 01_log folder
+        base_output_path = BASE_OUTPUT_FOLDER
+        timestamp_folder = f"{base_output_path}/{timestamp}"
+        
+        # Find automatically created folder structure
+        log_folder_path = None
+        if os.path.exists(timestamp_folder):
+            for item in os.listdir(timestamp_folder):
+                item_path = os.path.join(timestamp_folder, item)
+                if os.path.isdir(item_path) and '_' in item:
+                    # Check if this directory contains 01_log
+                    log_path = os.path.join(item_path, '01_log')
+                    if os.path.exists(log_path):
+                        log_folder_path = log_path
+                        break
+        
+        if not log_folder_path:
+            return jsonify({'error': f'Log folder not found for timestamp: {timestamp}'}), 404
+        
+        # Create zip file of logs
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(log_folder_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arc_name = os.path.relpath(file_path, log_folder_path)
+                    zip_file.write(file_path, arc_name)
+        
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'reporting_logs_{timestamp}.zip'
+        )
+    
+    except Exception as e:
+        logger.error(f"Error downloading reporting logs: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Download Reporting Reports
+@app.route('/download_reporting_reports/<task_id>', methods=['GET'])
+def download_reporting_reports(task_id):
+    """Download reporting reports and redirect to reporting page"""
+    try:
+        # Get reporting record
+        record = get_reporting_record(task_id)
+        if not record:
+            return jsonify({'error': 'Reporting record not found'}), 404
+        
+        if record['status'] != 'Completed':
+            return jsonify({'error': 'Report is not ready yet'}), 400
+        
+        # Return redirect information - use the generate report timestamp where reports are stored
+        # For generate report records, use the new timestamp from settings, not original_timestamp
+        settings = record.get('settings', {})
+        if isinstance(settings, str):
+            import json
+            try:
+                settings = json.loads(settings)
+            except:
+                settings = {}
+        
+        # Use the generate report timestamp (new_timestamp) instead of original_timestamp
+        report_timestamp = settings.get('timestamp', record.get('original_timestamp', ''))
+        
+        return jsonify({
+            'redirect': True,
+            'url': f'/reporting?timestamp={report_timestamp}&report_task_id={task_id}'
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error downloading reporting reports: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# ==============================================================================
+# 4. REPORTING
 def download_single_report(report_type, report_base_path=None):
     """Download a single report file"""
     try:
@@ -3253,11 +3246,21 @@ def download_single_report(report_type, report_base_path=None):
             logger.error(f"Report file not found: {file_path}")
             return {'status': 'Failed', 'error': f'Report file not found: {file_path}'}
         
+        # Create ZIP file in memory
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.write(file_path, filename)
+        
+        zip_buffer.seek(0)
+        
+        # Generate ZIP filename based on report type
+        zip_filename = filename.replace('.xlsx', '.zip')
+        
         return send_file(
-            file_path,
+            zip_buffer,
+            mimetype='application/zip',
             as_attachment=True,
-            download_name=filename,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            download_name=zip_filename
         )
     except Exception as e:
         logger.error(f"Error downloading {report_type} report: {str(e)}")
@@ -3376,6 +3379,51 @@ def download_bu_excel_reports():
         logger.error(f"Error in download_bu_excel_reports: {str(e)}")
         return jsonify({'error': f'Error downloading BU Excel Reports: {str(e)}'}), 500
 
+# Reporting: Download HKMA Report
+@app.route('/download_hkma_report', methods=['GET'])
+def download_hkma_report():
+    try:
+        report_base_path = request.args.get('report_base_path')
+        maker = request.args.get('maker', 'Unknown User')
+        
+        file_path = f"HKMA Report from {report_base_path}" if report_base_path else "HKMA Report"
+        log_download_activity(maker, "Reporting", file_path)
+        
+        return download_single_report('hkma', report_base_path)
+    except Exception as e:
+        logger.error(f"Error in download_hkma_report: {str(e)}")
+        return jsonify({'error': f'Error downloading HKMA Report: {str(e)}'}), 500
+
+# Reporting: Download Audit Trial Report
+@app.route('/download_audit_trial_report', methods=['GET'])
+def download_audit_trial_report():
+    try:
+        report_base_path = request.args.get('report_base_path')
+        maker = request.args.get('maker', 'Unknown User')
+        
+        file_path = f"Audit Trial Report from {report_base_path}" if report_base_path else "Audit Trial Report"
+        log_download_activity(maker, "Reporting", file_path)
+        
+        return download_single_report('audit_trial', report_base_path)
+    except Exception as e:
+        logger.error(f"Error in download_audit_trial_report: {str(e)}")
+        return jsonify({'error': f'Error downloading Audit Trial Report: {str(e)}'}), 500
+
+# Reporting: Download GL Posting Report
+@app.route('/download_gl_posting_report', methods=['GET'])
+def download_gl_posting_report():
+    try:
+        report_base_path = request.args.get('report_base_path')
+        maker = request.args.get('maker', 'Unknown User')
+        
+        file_path = f"GL Posting Report from {report_base_path}" if report_base_path else "GL Posting Report"
+        log_download_activity(maker, "Reporting", file_path)
+        
+        return download_single_report('gl_posting', report_base_path)
+    except Exception as e:
+        logger.error(f"Error in download_gl_posting_report: {str(e)}")
+        return jsonify({'error': f'Error downloading GL Posting Report: {str(e)}'}), 500
+
 # Reporting: Check report availability
 @app.route('/check_report_availability', methods=['GET'])
 def check_report_availability():
@@ -3415,7 +3463,7 @@ def check_report_availability():
 def check_report_availability_for_timestamp(timestamp):
     try:
         # Construct the base path for this timestamp
-        base_path = f'/u01/Apps/EY_working/99_data/03_output_folder/{timestamp}'
+        base_path = os.path.join(BASE_OUTPUT_FOLDER, timestamp)
         
         # Check if the base path exists
         if not os.path.exists(base_path):
@@ -3467,7 +3515,8 @@ def check_report_availability_for_timestamp(timestamp):
         logger.error(f"Error checking report availability for timestamp {timestamp}: {str(e)}")
         return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500 
 
-#============================================= Role Management =============================================
+# ==============================================================================
+# 5. ROLE MANAGEMENT
 @app.route('/get_user_records', methods=['GET'])
 def api_get_user_records():
     """Get all user records from database"""
@@ -3670,11 +3719,12 @@ def api_update_role_function_record():
         logger.error(f"Error in api_update_role_function_record: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-#============================================= Audit Trail =============================================
+# ==============================================================================
+# 6. AUDIT TRAIL
 def create_audit_trial_folder():
     """Create the AuditTrial folder if it doesn't exist"""
     try:
-        audit_folder = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial'
+        audit_folder = AUDIT_FOLDER
         os.makedirs(audit_folder, exist_ok=True)
         logger.info(f"AuditTrial folder created/verified: {audit_folder}")
         return True
@@ -3686,7 +3736,7 @@ def log_user_role_update(operation, user_name, page="Role Management", details="
     """Log user and role updates to the audit trail"""
     try:
         create_audit_trial_folder()
-        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_role_updates_log.txt'
+        log_file = AUDIT_LOGS['user_role_updates']
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         log_entry = f"[{current_time}] User: {user_name} | Page: {page} | Operation: {operation} | Details: {details}\n"
@@ -3704,7 +3754,7 @@ def log_download_activity(user_name, page, file_path):
     """Log download activities to the audit trail"""
     try:
         create_audit_trial_folder()
-        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/download_log.txt'
+        log_file = AUDIT_LOGS['download']
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         log_entry = f"[{current_time}] User: {user_name} | Page: {page} | Download File: {file_path}\n"
@@ -3722,7 +3772,7 @@ def log_user_access(username, action, status, details=None):
     """Log user access activities (login/logout) to the audit trail"""
     try:
         create_audit_trial_folder()
-        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_access_log.txt'
+        log_file = AUDIT_LOGS['user_access']
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         log_entry = f"[{current_time}] User: {username} | Action: {action} | Status: {status}"
@@ -3746,9 +3796,9 @@ def create_all_admin_logs():
         
         # Define admin log files to combine
         admin_log_files = [
-            ('User & Role Updates', r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_role_updates_log.txt'),
-            ('User Access', r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_access_log.txt'),
-            ('Download Activity', r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/download_log.txt')
+            ('User & Role Updates', AUDIT_LOGS['user_role_updates']),
+            ('User Access', AUDIT_LOGS['user_access']),
+            ('Download Activity', AUDIT_LOGS['download'])
         ]
         
         # Create combined content
@@ -3791,7 +3841,7 @@ def log_ecl_result_confirmation(user_name, timestamp, settings):
     """Log ECL result confirmation to the audit trail"""
     try:
         create_audit_trial_folder()
-        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/ecl_result_confirmation_log.txt'
+        log_file = AUDIT_LOGS['ecl_confirmation']
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         log_entry = f"[{current_time}] User: {user_name} | Page: Run Management | Operation: Approve Record | Timestamp: {timestamp} | Settings: {settings}\n"
@@ -3809,7 +3859,7 @@ def log_parameter_update(user_name, operation_type, file_type, file_path):
     """Log parameter updates to the audit trail"""
     try:
         create_audit_trial_folder()
-        log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/parameter_update_log.txt'
+        log_file = AUDIT_LOGS['parameter_update']
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         log_entry = f"[{current_time}] User: {user_name} | Page: Parameter | Operation: {operation_type} | Type: {file_type} | File Path: {file_path}\n"
@@ -3830,19 +3880,19 @@ def download_audit_log(log_type):
         create_audit_trial_folder()
         
         if log_type == 'user_role_updates':
-            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_role_updates_log.txt'
+            log_file = AUDIT_LOGS['user_role_updates']
             filename = 'user_role_updates_log.txt'
         elif log_type == 'download_activity':
-            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/download_log.txt'
+            log_file = AUDIT_LOGS['download']
             filename = 'download_log.txt'
         elif log_type == 'ecl_result_confirmation':
-            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/ecl_result_confirmation_log.txt'
+            log_file = AUDIT_LOGS['ecl_confirmation']
             filename = 'ecl_result_confirmation_log.txt'
         elif log_type == 'parameter_updates':
-            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/parameter_update_log.txt'
+            log_file = AUDIT_LOGS['parameter_update']
             filename = 'parameter_update_log.txt'
         elif log_type == 'user_access':
-            log_file = r'/u01/Apps/EY_working/ECL_UI_v0.1/AuditTrial/user_access_log.txt'
+            log_file = AUDIT_LOGS['user_access']
             filename = 'user_access_log.txt'
         elif log_type == 'all_admin_logs':
             # Create a combined log file for all admin logs
@@ -3904,13 +3954,18 @@ def confirm_ecl_result():
         logger.error(f"Error confirming ECL result: {str(e)}")
         return jsonify({'error': f'Error confirming ECL result: {str(e)}'}), 500
  
-############################################################################ AD Validation
-# LDAP Configuration
-LDAP_SERVER = 'ldap://10.30.244.12:389'
-LDAP_BIND_DN = 'CN=svreclappmgr, OU=Service Accounts,OU=Tier1,OU=Admin,OU=HKG,DC=hkg,DC=ho,DC=cncb2'
-LDAP_BIND_PASSWORD = 'Cncbi@67890'
-LDAP_SEARCH_BASE = 'OU=User Accounts,OU=HKG,DC=hkg,DC=ho,DC=cncb2'
+################################################################################################################################################################
+#                           LOGIN AUTHENTICATION
+################################################################################################################################################################
+"""
+This section contains 
 
+Configuration Categories:
+1. AD Validation                - 
+2. Login Authentication         - 
+"""
+# ==============================================================================
+# 1. AD VALIDATION
 def validate_ad_user_id(user_id):
     """Validate AD user ID against Active Directory"""
     logger.info(f"Validating user ID: {user_id}")
@@ -4008,7 +4063,8 @@ def validate_ad_user():
     
     return jsonify(result), 200 if result['status'] == 'success' else 404
  
-############################################################################ Login Authentication
+# ==============================================================================
+# 2. LOGIN AUTHENTICATION
 @app.route('/validate-ldap-user', methods=['POST'])
 def validate_ldap_user():
     """Validate user credentials against Active Directory with detailed error messages"""
@@ -4355,17 +4411,9 @@ def logout():
             "message": "Logout error"
         }), 500
 
-############################################################################ Run
+################################################################################################################################################################
+#                               RUN
+################################################################################################################################################################
 if __name__ == '__main__':
-    logger.info("Starting backend server...")
-    if test_db_connection():
-        create_ui_parameter_table()
-        create_ui_user_maintenance_table()
-        create_ui_role_maintenance_table()
-        create_ui_function_maintenance_table()
-        create_prerun_validation_table()
-        logger.info("All database tables initialized successfully")
-    else:
-        logger.error("Database connection Failed")
     logger.info("Starting Flask server on port 5010...")
     app.run(debug=True, port=5010)

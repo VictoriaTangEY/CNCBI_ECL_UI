@@ -353,7 +353,7 @@ const loadPreRunValidationRecords = async () => {
     prerunValidationList.value = (response.data.records || []).map((record: any) => ({
       ...record,
       type: record.upload_type || record.type, // Use upload_type if available, otherwise fallback to type
-      action: `Pre-run Validation: ${(record.upload_type || record.type) === 'Parameter' ? 'par' : 'adj'}_${record.upload_timestamp || record.timestamp}`
+      action: `Pre-run Validation: ${(record.upload_type || record.type) === 'parameter' ? 'par' : 'adj'}_${record.upload_timestamp || record.timestamp}`
     }))
     
     // Update reviewList with pre-run validation status
@@ -509,11 +509,23 @@ const approveSelected = async () => {
 // Pre-run Validation functions
 const startPreRunValidation = async (item: any, index: number) => {
   try {
-    // Determine if this is a parameter or adjustment
-    const isParameter = item.type === 'Parameter'
-    const folderName = isParameter ? 
-      `par_${item.timestamp}${item.category ? '_' + item.category : ''}${item.suffix ? '_' + item.suffix : ''}` :
-      `adj_${item.timestamp}${item.category ? '_' + item.category : ''}${item.suffix ? '_' + item.suffix : ''}`
+    // Debug: Check what we're receiving
+    console.log('DEBUG - Full item object:', item)
+    console.log('DEBUG - item.action:', item.action)
+    console.log('DEBUG - item.type:', item.type)
+    console.log('DEBUG - item.timestamp:', item.timestamp)
+    
+    // Extract folder name from action field (format: "upload: folder_name")
+    const folderName = item.action.replace('upload: ', '').trim()
+    
+    console.log('DEBUG - folderName after replace:', folderName)
+    console.log('DEBUG - folderName starts with par_?', folderName.startsWith('par_'))
+    console.log('DEBUG - folderName starts with adj_?', folderName.startsWith('adj_'))
+    
+    // Determine if this is a parameter or adjustment based on folder name prefix
+    const isParameter = folderName.startsWith('par_')
+    
+    console.log('DEBUG - isParameter result:', isParameter)
     
     // Generate UI timestamp
     const now = new Date()

@@ -655,7 +655,6 @@ async function validateAndAddUser() {
       if (saveResponse.data.status === 'success') {
         await loadUserRecords() // Reload data
       closeAddUserModal()
-      alert('User created successfully!')
       } else {
         alert('Failed to save user record')
       }
@@ -685,7 +684,6 @@ async function saveUserUpdate() {
     if (response.data.status === 'success') {
       await loadUserRecords() // Reload data
     closeUpdateUserModal()
-    alert('User updated successfully!')
     } else {
       alert('Failed to update user record')
     }
@@ -729,7 +727,6 @@ async function saveRole() {
       if (response.data.status === 'success') {
         await loadRoleRecords() // Reload data
         closeRoleModal()
-        alert('Role updated successfully!')
         } else {
         alert('Failed to update role record')
       }
@@ -745,7 +742,6 @@ async function saveRole() {
       if (response.data.status === 'success') {
         await loadRoleRecords() // Reload data
         closeRoleModal()
-        alert('Role created successfully!')
   } else {
         alert('Failed to create role record')
     }
@@ -776,7 +772,6 @@ async function saveNewRole() {
     if (response.data.status === 'success') {
       await loadRoleRecords() // Reload data
   showAddRow.value = false
-      alert('Role created successfully!')
     } else {
       alert('Failed to create role record')
     }
@@ -811,7 +806,6 @@ async function saveNewFunction() {
     if (response.data.status === 'success') {
       await loadFunctionRecords() // Reload data
       showAddFunctionRow.value = false
-      alert('Function created successfully!')
     } else {
       alert('Failed to create function record')
     }
@@ -847,7 +841,6 @@ async function saveEditFunctionFunc() {
         showEditFunctionModal.value = false
         editFunctionIdxFunc.value = null
         editFunctionNameFunc.value = ''
-        alert('Function updated successfully!')
       } else {
         alert('Failed to update function record')
       }
@@ -915,7 +908,6 @@ async function saveEditFunctionMapping() {
   showEditFunctionModal.value = false
   editFunctionIdx.value = null
   editFunctionName.value = ''
-        alert('Role-function mapping updated successfully!')
       } else {
         alert('Failed to update role-function mapping')
       }
@@ -942,7 +934,6 @@ async function saveRoleFunctionMappings() {
     })
     
     await Promise.all(promises)
-    alert('Role-function mappings saved successfully!')
   } catch (error) {
     console.error('Error saving role-function mappings:', error)
     alert('Error saving role-function mappings')

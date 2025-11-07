@@ -72,6 +72,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { getUserDisplayName } from '../services/authService'
 
 const route = useRoute()
 
@@ -181,22 +182,28 @@ async function downloadReport(reportTitle) {
     switch (reportTitle) {
       case 'ECL Monthly Report':
         endpoint = '/download_ecl_monthly_report'
-        filename = 'reporting_ecl_result_to_rmg.xlsx'
+        filename = 'reporting_ecl_result_to_rmg.zip'
         break
       case 'ECL Summary Report':
         endpoint = '/download_ecl_summary_report'
-        filename = 'reporting_ecl_result_summary.xlsx'
+        filename = 'reporting_ecl_result_summary.zip'
         break
       case 'BU Excel Report':
         endpoint = '/download_bu_excel_reports'
         filename = 'BU_Excel_Reports.zip'
         break
       case 'HKMA Reports':
+        endpoint = '/download_hkma_report'
+        filename = 'reporting_ecl_hkma.zip'
+        break
       case 'Audit Trail Report':
+        endpoint = '/download_audit_trial_report'
+        filename = 'reporting_ecl_audit_trial.zip'
+        break
       case 'GL Posting Report':
-        // These reports are not implemented yet, do nothing
-        console.log(`${reportTitle} download not implemented yet`)
-        return
+        endpoint = '/download_gl_posting_report'
+        filename = 'reporting_ecl_gl_posting.zip'
+        break
       default:
         console.error('Unknown report type:', reportTitle)
         return
@@ -205,6 +212,7 @@ async function downloadReport(reportTitle) {
     // Make API call to backend with dynamic report base path
     const apiUrl = new URL(`/api${endpoint}`, window.location.origin)
     apiUrl.searchParams.append('report_base_path', reportBasePath.value)
+    apiUrl.searchParams.append('maker', getUserDisplayName())
     
     const response = await fetch(apiUrl.toString(), {
       method: 'GET',
