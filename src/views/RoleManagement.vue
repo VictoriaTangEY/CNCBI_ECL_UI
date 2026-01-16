@@ -74,6 +74,7 @@
         </div>
       </div>
       <div style="margin-top: 15px; text-align: right;" v-if="currentTab === 'user'">
+        <button class="upload-button" @click="exportUserRecords" style="margin-right: 10px;">Export to List</button>
         <button class="upload-button" @click="showAddUserModal = true">Add New User</button>
       </div>
 
@@ -664,6 +665,42 @@ async function validateAndAddUser() {
   } catch (error) {
     console.error('Error validating user:', error)
     alert('Error connecting to Active Directory. Please try again.')
+  }
+}
+
+async function exportUserRecords() {
+  try {
+    const response = await axios.get('/api/export_user_records', {
+      responseType: 'blob'
+    })
+    
+    // Create download link
+    const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8-sig;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    // Get filename from response headers or use default
+    const contentDisposition = response.headers['content-disposition']
+    // Default filename matches backend naming pattern (fallback only)
+    let filename = `user_list.csv`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '')
+      }
+    }
+    
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    console.log('User records exported successfully')
+  } catch (error: any) {
+    console.error('Export failed:', error)
+    alert('Failed to export user records. Please try again.')
   }
 }
 

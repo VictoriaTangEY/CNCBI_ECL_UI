@@ -1,0 +1,33 @@
+Subject: Re: Nginx /etc/nginx Directory Permission Review
+
+Dear [Client Name],
+
+Thank you for your inquiry regarding the /etc/nginx directory permissions.
+
+We can confirm that it is **safe to remove the other-write permission** on /etc/nginx.
+
+**Current:** drwxrwxrwx (777)  
+**Recommended:** drwxr-xr-x (755)
+
+**Rationale:**
+- Nginx only requires read access to configuration files, not write permissions.
+- The svreclcalusr user runs our Flask application service, not nginx.
+- This change will not impact nginx's functionality and improves security by preventing unauthorized configuration modifications.
+
+**Action:**
+```bash
+chmod 755 /etc/nginx
+```
+
+**Verification:**
+```bash
+nginx -t && systemctl reload nginx
+```
+
+This is a low-risk security improvement. If needed, permissions can be immediately reverted.
+
+Please let us know if you have any questions.
+
+Best regards,
+[Your Name]
+

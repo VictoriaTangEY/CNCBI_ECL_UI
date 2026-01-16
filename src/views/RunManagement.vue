@@ -770,7 +770,7 @@ function canGenerateReport(item: ReviewItem): boolean {
   
   // Check if run mode ends with '5'
   const runMode = item.runMode || ''
-  return runMode.endsWith('5')
+  return runMode.endsWith('5') || runMode.endsWith('6')
 }
 
 // Generate Report from Record

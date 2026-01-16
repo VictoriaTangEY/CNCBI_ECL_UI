@@ -1,0 +1,12 @@
+2025-11-18 16:15:29,490 - ecl_calculation - INFO - ==================================================
+2025-11-18 16:15:29,490 - ecl_calculation - INFO - Starting ECL Calculation Process
+2025-11-18 16:15:29,490 - ecl_calculation - INFO - ==================================================
+2025-11-18 16:15:29,490 - ecl_calculation - INFO - 1.1. Loading data
+2025-11-18 16:15:30,658 - ecl_calculation - INFO - 	Data loaded successfully
+2025-11-18 16:15:30,659 - ecl_calculation - INFO - 2.1. On_Balance EAD Generation
+2025-11-18 16:15:30,662 - ecl_calculation - INFO - 	Processing Layer 1 (Schedule-based deals)...
+2025-11-18 16:15:30,662 - ecl_calculation - INFO - 	Schedule IDs found: 72
+2025-11-18 16:15:32,766 - ecl_calculation - INFO - 	Processing Layer 2 (AMRT_TYPE_CD = 100 and PMT_AMT > 0)...
+2025-11-18 16:15:32,766 - ecl_calculation - INFO - 	Remaining deals after Layer 1: 799
+2025-11-18 16:15:38,870 - ecl_calculation - INFO - 	Processing Layer 3 (Remaining deals)...
+2025-11-18 16:15:38,871 - ecl_calculation - INFO - 	Remaining deals after Layer 2: 607

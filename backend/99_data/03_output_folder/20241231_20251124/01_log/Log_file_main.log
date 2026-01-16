@@ -1,0 +1,59 @@
+2025-11-24 17:41:32,435 - main - INFO - Starting ECL Engine Process...
+2025-11-24 17:41:32,435 - main - INFO - Run Mode: 3
+2025-11-24 17:41:32,435 - main - INFO - 	FULL SET MODE
+2025-11-24 17:41:52,640 - main - INFO - 	Parameters loaded successfully
+2025-11-24 17:41:52,640 - main - INFO - Skipping ECL Adjustment - Deal Append (not in current run mode)
+2025-11-24 17:41:52,640 - main - INFO - Skipping Pre-Run Data Sanity Check (not in current run mode)
+2025-11-24 17:41:52,640 - main - INFO - Starting ECL Calculation...
+2025-11-24 17:42:39,210 - main - INFO - Completed ECL Calculation
+2025-11-24 17:42:39,212 - main - INFO - Starting Output Handle - ECL Results Export...
+2025-11-24 17:42:39,274 - main - INFO - Exported interim_output_ead_schedule.csv with timestamp
+2025-11-24 17:42:39,298 - main - INFO - Exported interim_output_allocated_collateral.csv with timestamp
+2025-11-24 17:42:39,634 - main - INFO - Exported interim_output_ecl_detailed.csv with timestamp
+2025-11-24 17:42:40,340 - main - INFO - Exported interim_output_ecl_by_deal.csv with timestamp
+2025-11-24 17:42:40,341 - main - INFO - Skipping ECL Adjustment - Post-Run (not in current run mode)
+2025-11-24 17:42:40,342 - main - INFO - Skipping Post-Run Result Validation (not in current run mode)
+2025-11-24 17:42:40,342 - main - INFO - Skipping Output to ECL calc server (TO_DB is OFF)
+2025-11-24 17:42:40,343 - main - INFO - Skipping Reporting (not in current run mode)
+2025-11-24 17:45:44,687 - main - INFO - Starting ECL Engine Process...
+2025-11-24 17:45:44,687 - main - INFO - Run Mode: 3
+2025-11-24 17:45:44,687 - main - INFO - 	FULL SET MODE
+2025-11-24 17:45:59,138 - main - INFO - 	Parameters loaded successfully
+2025-11-24 17:45:59,138 - main - INFO - Skipping ECL Adjustment - Deal Append (not in current run mode)
+2025-11-24 17:45:59,138 - main - INFO - Skipping Pre-Run Data Sanity Check (not in current run mode)
+2025-11-24 17:45:59,138 - main - INFO - Starting ECL Calculation...
+2025-11-24 17:46:48,406 - main - INFO - Completed ECL Calculation
+2025-11-24 17:46:48,407 - main - INFO - Starting Output Handle - ECL Results Export...
+2025-11-24 17:46:48,494 - main - INFO - Exported interim_output_ead_schedule.csv with timestamp
+2025-11-24 17:46:48,522 - main - INFO - Exported interim_output_allocated_collateral.csv with timestamp
+2025-11-24 17:46:48,884 - main - INFO - Exported interim_output_ecl_detailed.csv with timestamp
+2025-11-24 17:46:49,579 - main - INFO - Exported interim_output_ecl_by_deal.csv with timestamp
+2025-11-24 17:46:49,581 - main - INFO - Skipping ECL Adjustment - Post-Run (not in current run mode)
+2025-11-24 17:46:49,581 - main - INFO - Skipping Post-Run Result Validation (not in current run mode)
+2025-11-24 17:46:49,582 - main - INFO - Skipping Output to ECL calc server (TO_DB is OFF)
+2025-11-24 17:46:49,582 - main - INFO - Skipping Reporting (not in current run mode)
+2025-11-24 18:01:16,096 - main - INFO - Starting ECL Engine Process...
+2025-11-24 18:01:16,096 - main - INFO - Run Mode: 3
+2025-11-24 18:01:16,096 - main - INFO - 	FULL SET MODE
+2025-11-24 18:01:29,799 - main - INFO - 	Parameters loaded successfully
+2025-11-24 18:01:29,800 - main - INFO - Skipping ECL Adjustment - Deal Append (not in current run mode)
+2025-11-24 18:01:29,800 - main - INFO - Skipping Pre-Run Data Sanity Check (not in current run mode)
+2025-11-24 18:01:29,800 - main - INFO - Starting ECL Calculation...
+2025-11-24 18:01:52,024 - main - ERROR - Error in ECL Calculation: [Errno 13] Permission denied: 'C:\\Users\\SA814XM\\Engagement\\01_CNCBI\\CNCBI_ECL_Engine\\02_engine_server\\99_data\\03_output_folder\\20241231_20251124\\02_interim\\chk_3_coll_allocated.csv'
+2025-11-24 18:07:02,270 - main - INFO - Starting ECL Engine Process...
+2025-11-24 18:07:02,270 - main - INFO - Run Mode: 3
+2025-11-24 18:07:02,270 - main - INFO - 	FULL SET MODE
+2025-11-24 18:07:22,475 - main - INFO - 	Parameters loaded successfully
+2025-11-24 18:07:22,476 - main - INFO - Skipping ECL Adjustment - Deal Append (not in current run mode)
+2025-11-24 18:07:22,476 - main - INFO - Skipping Pre-Run Data Sanity Check (not in current run mode)
+2025-11-24 18:07:22,476 - main - INFO - Starting ECL Calculation...
+2025-11-24 18:07:56,056 - main - INFO - Completed ECL Calculation
+2025-11-24 18:07:56,056 - main - INFO - Starting Output Handle - ECL Results Export...
+2025-11-24 18:07:56,079 - main - INFO - Exported interim_output_ead_schedule.csv with timestamp
+2025-11-24 18:07:56,089 - main - INFO - Exported interim_output_allocated_collateral.csv with timestamp
+2025-11-24 18:07:56,180 - main - INFO - Exported interim_output_ecl_detailed.csv with timestamp
+2025-11-24 18:07:56,312 - main - INFO - Exported interim_output_ecl_by_deal.csv with timestamp
+2025-11-24 18:07:56,314 - main - INFO - Skipping ECL Adjustment - Post-Run (not in current run mode)
+2025-11-24 18:07:56,314 - main - INFO - Skipping Post-Run Result Validation (not in current run mode)
+2025-11-24 18:07:56,314 - main - INFO - Skipping Output to ECL calc server (TO_DB is OFF)
+2025-11-24 18:07:56,314 - main - INFO - Skipping Reporting (not in current run mode)

@@ -1,0 +1,173 @@
+2025-11-24 17:41:52,641 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:41:52,641 - ecl_calculation - INFO - Starting ECL Calculation Process
+2025-11-24 17:41:52,641 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:41:52,641 - ecl_calculation - INFO - 1.1. Loading data
+2025-11-24 17:41:54,311 - ecl_calculation - INFO - 	Data loaded successfully
+2025-11-24 17:41:54,312 - ecl_calculation - INFO - 2.1. On_Balance EAD Generation
+2025-11-24 17:41:54,317 - ecl_calculation - INFO - 	Processing Layer 1 (Schedule-based deals)...
+2025-11-24 17:41:54,318 - ecl_calculation - INFO - 	Schedule IDs found: 72
+2025-11-24 17:41:55,727 - ecl_calculation - INFO - 	Processing Layer 2 (AMRT_TYPE_CD = 100 and PMT_AMT > 0)...
+2025-11-24 17:41:55,727 - ecl_calculation - INFO - 	Remaining deals after Layer 1: 799
+2025-11-24 17:41:59,265 - ecl_calculation - INFO - 	Processing Layer 3 (Remaining deals)...
+2025-11-24 17:41:59,266 - ecl_calculation - INFO - 	Remaining deals after Layer 2: 607
+2025-11-24 17:42:06,614 - ecl_calculation - INFO - 	EAD Generation Summary:
+2025-11-24 17:42:06,625 - ecl_calculation - INFO - 	Layer 1: 72 deals in, 72 processed, 0 unprocessed
+2025-11-24 17:42:06,625 - ecl_calculation - INFO - 	Layer 2: 192 deals in, 192 processed, 0 unprocessed
+2025-11-24 17:42:06,625 - ecl_calculation - INFO - 	Layer 3: 607 deals in, 607 processed, 0 unprocessed
+2025-11-24 17:42:06,625 - ecl_calculation - INFO - 	Total deals in on_df: 871
+2025-11-24 17:42:06,910 - ecl_calculation - INFO - 	EAD generation completed
+2025-11-24 17:42:06,910 - ecl_calculation - INFO - 2.2. Off_Balance EAD Generation
+2025-11-24 17:42:07,551 - ecl_calculation - INFO - 	Off_Balance EAD generation completed
+2025-11-24 17:42:07,551 - ecl_calculation - INFO - 2.3. Generate final EAD
+2025-11-24 17:42:07,553 - ecl_calculation - INFO - 	Checking for duplicate deal_ids...
+2025-11-24 17:42:07,601 - ecl_calculation - INFO - 	Final EAD generation completed
+2025-11-24 17:42:07,602 - ecl_calculation - INFO - 3. Allocating Collateral
+2025-11-24 17:42:07,603 - ecl_calculation - INFO - 	Processing 808 collateral records
+2025-11-24 17:42:07,728 - ecl_calculation - INFO - 	Collateral allocation completed with 808 collateral records
+2025-11-24 17:42:07,784 - ecl_calculation - INFO - 	Collateral allocation completed
+2025-11-24 17:42:07,786 - ecl_calculation - INFO - 4. PD assignment
+2025-11-24 17:42:07,958 - ecl_calculation - INFO - 	PD assignment completed
+2025-11-24 17:42:07,959 - ecl_calculation - INFO - 5. LGD calculation
+2025-11-24 17:42:37,477 - ecl_calculation - INFO - 	LGD calculation completed
+2025-11-24 17:42:37,479 - ecl_calculation - INFO - 6. Discount factor calculation
+2025-11-24 17:42:37,917 - ecl_calculation - INFO - 	Discount factor calculation completed
+2025-11-24 17:42:37,919 - ecl_calculation - INFO - 7. Applying CCF to EAD
+2025-11-24 17:42:38,323 - ecl_calculation - INFO - 	CCF application to EAD completed
+2025-11-24 17:42:38,323 - ecl_calculation - INFO - 8. ECL calculation
+2025-11-24 17:42:39,001 - ecl_calculation - INFO - 	ECL calculation completed
+2025-11-24 17:42:39,001 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:42:39,002 - ecl_calculation - INFO - 	ECL Calculation Process Completed Successfully
+2025-11-24 17:42:39,002 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:42:39,002 - ecl_calculation - INFO - 9. Stage 3 ECL calculation
+2025-11-24 17:42:39,015 - ecl_calculation - INFO - 	Stage 3 ECL calculation completed
+2025-11-24 17:42:39,017 - ecl_calculation - INFO - 10. ECL result concat
+2025-11-24 17:42:39,203 - ecl_calculation - INFO - 	ECL result concatenation completed
+2025-11-24 17:45:59,140 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:45:59,140 - ecl_calculation - INFO - Starting ECL Calculation Process
+2025-11-24 17:45:59,140 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:45:59,140 - ecl_calculation - INFO - 1.1. Loading data
+2025-11-24 17:46:00,350 - ecl_calculation - INFO - 	Data loaded successfully
+2025-11-24 17:46:00,351 - ecl_calculation - INFO - 2.1. On_Balance EAD Generation
+2025-11-24 17:46:00,353 - ecl_calculation - INFO - 	Processing Layer 1 (Schedule-based deals)...
+2025-11-24 17:46:00,353 - ecl_calculation - INFO - 	Schedule IDs found: 72
+2025-11-24 17:46:01,488 - ecl_calculation - INFO - 	Processing Layer 2 (AMRT_TYPE_CD = 100 and PMT_AMT > 0)...
+2025-11-24 17:46:01,488 - ecl_calculation - INFO - 	Remaining deals after Layer 1: 799
+2025-11-24 17:46:04,949 - ecl_calculation - INFO - 	Processing Layer 3 (Remaining deals)...
+2025-11-24 17:46:04,951 - ecl_calculation - INFO - 	Remaining deals after Layer 2: 607
+2025-11-24 17:46:11,282 - ecl_calculation - INFO - 	EAD Generation Summary:
+2025-11-24 17:46:11,295 - ecl_calculation - INFO - 	Layer 1: 72 deals in, 72 processed, 0 unprocessed
+2025-11-24 17:46:11,295 - ecl_calculation - INFO - 	Layer 2: 192 deals in, 192 processed, 0 unprocessed
+2025-11-24 17:46:11,296 - ecl_calculation - INFO - 	Layer 3: 607 deals in, 607 processed, 0 unprocessed
+2025-11-24 17:46:11,296 - ecl_calculation - INFO - 	Total deals in on_df: 871
+2025-11-24 17:46:11,572 - ecl_calculation - INFO - 	EAD generation completed
+2025-11-24 17:46:11,572 - ecl_calculation - INFO - 2.2. Off_Balance EAD Generation
+2025-11-24 17:46:12,229 - ecl_calculation - INFO - 	Off_Balance EAD generation completed
+2025-11-24 17:46:12,230 - ecl_calculation - INFO - 2.3. Generate final EAD
+2025-11-24 17:46:12,231 - ecl_calculation - INFO - 	Checking for duplicate deal_ids...
+2025-11-24 17:46:12,259 - ecl_calculation - INFO - 	Final EAD generation completed
+2025-11-24 17:46:12,260 - ecl_calculation - INFO - 3. Allocating Collateral
+2025-11-24 17:46:12,261 - ecl_calculation - INFO - 	Processing 808 collateral records
+2025-11-24 17:46:12,349 - ecl_calculation - INFO - 	Collateral allocation completed with 808 collateral records
+2025-11-24 17:46:12,403 - ecl_calculation - INFO - 	Collateral allocation completed
+2025-11-24 17:46:12,404 - ecl_calculation - INFO - 4. PD assignment
+2025-11-24 17:46:12,572 - ecl_calculation - INFO - 	PD assignment completed
+2025-11-24 17:46:12,573 - ecl_calculation - INFO - 5. LGD calculation
+2025-11-24 17:46:46,861 - ecl_calculation - INFO - 	LGD calculation completed
+2025-11-24 17:46:46,862 - ecl_calculation - INFO - 6. Discount factor calculation
+2025-11-24 17:46:47,282 - ecl_calculation - INFO - 	Discount factor calculation completed
+2025-11-24 17:46:47,283 - ecl_calculation - INFO - 7. Applying CCF to EAD
+2025-11-24 17:46:47,582 - ecl_calculation - INFO - 	CCF application to EAD completed
+2025-11-24 17:46:47,583 - ecl_calculation - INFO - 8. ECL calculation
+2025-11-24 17:46:48,143 - ecl_calculation - INFO - 	ECL calculation completed
+2025-11-24 17:46:48,144 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:46:48,144 - ecl_calculation - INFO - 	ECL Calculation Process Completed Successfully
+2025-11-24 17:46:48,144 - ecl_calculation - INFO - ==================================================
+2025-11-24 17:46:48,145 - ecl_calculation - INFO - 9. Stage 3 ECL calculation
+2025-11-24 17:46:48,157 - ecl_calculation - INFO - 	Stage 3 ECL calculation completed
+2025-11-24 17:46:48,160 - ecl_calculation - INFO - 10. ECL result concat
+2025-11-24 17:46:48,393 - ecl_calculation - INFO - 	ECL result concatenation completed
+2025-11-24 18:01:29,801 - ecl_calculation - INFO - ==================================================
+2025-11-24 18:01:29,801 - ecl_calculation - INFO - Starting ECL Calculation Process
+2025-11-24 18:01:29,801 - ecl_calculation - INFO - ==================================================
+2025-11-24 18:01:29,802 - ecl_calculation - INFO - 1.1. Loading data
+2025-11-24 18:01:31,320 - ecl_calculation - INFO - 	Data loaded successfully
+2025-11-24 18:01:31,321 - ecl_calculation - INFO - 2.1. On_Balance EAD Generation
+2025-11-24 18:01:31,323 - ecl_calculation - INFO - 	Processing Layer 1 (Schedule-based deals)...
+2025-11-24 18:01:31,323 - ecl_calculation - INFO - 	Schedule IDs found: 72
+2025-11-24 18:01:32,717 - ecl_calculation - INFO - 	Processing Layer 2 (AMRT_TYPE_CD = 100 and PMT_AMT > 0)...
+2025-11-24 18:01:32,717 - ecl_calculation - INFO - 	Remaining deals after Layer 1: 799
+2025-11-24 18:01:36,325 - ecl_calculation - INFO - 	Processing Layer 3 (Remaining deals)...
+2025-11-24 18:01:36,326 - ecl_calculation - INFO - 	Remaining deals after Layer 2: 607
+2025-11-24 18:01:45,205 - ecl_calculation - INFO - 	EAD Generation Summary:
+2025-11-24 18:01:45,252 - ecl_calculation - INFO - 	Layer 1: 72 deals in, 72 processed, 0 unprocessed
+2025-11-24 18:01:45,252 - ecl_calculation - INFO - 	Layer 2: 192 deals in, 192 processed, 0 unprocessed
+2025-11-24 18:01:45,252 - ecl_calculation - INFO - 	Layer 3: 607 deals in, 607 processed, 0 unprocessed
+2025-11-24 18:01:45,253 - ecl_calculation - INFO - 	Total deals in on_df: 871
+2025-11-24 18:01:46,404 - ecl_calculation - INFO - 	EAD generation completed
+2025-11-24 18:01:46,404 - ecl_calculation - INFO - 2.2. Off_Balance EAD Generation
+2025-11-24 18:01:50,839 - ecl_calculation - INFO - 	Off_Balance EAD generation completed
+2025-11-24 18:01:50,844 - ecl_calculation - INFO - 2.3. Generate final EAD
+2025-11-24 18:01:50,847 - ecl_calculation - INFO - 	Checking for duplicate deal_ids...
+2025-11-24 18:01:50,972 - ecl_calculation - INFO - 	Final EAD generation completed
+2025-11-24 18:01:50,977 - ecl_calculation - INFO - 3. Allocating Collateral
+2025-11-24 18:01:50,979 - ecl_calculation - INFO - 	Processing 808 collateral records
+2025-11-24 18:01:51,480 - ecl_calculation - INFO - 	Collateral allocation completed with 808 collateral records
+2025-11-24 18:01:51,665 - ecl_calculation - ERROR - 	Collateral allocation failed
+Traceback (most recent call last):
+  File "C:\Users\SA814XM\Engagement\01_CNCBI\CNCBI_ECL_Engine\02_engine_server\cncbi_engine\ecl_engine_dev\ecl_calc\services\ecl_engine_service.py", line 340, in run_ecl_engine
+    coll_df.to_csv(context.outInterimPath /
+  File "C:\Users\SA814XM\AppData\Local\miniforge3\envs\cncbi_engine_1\lib\site-packages\pandas\util\_decorators.py", line 333, in wrapper
+    return func(*args, **kwargs)
+  File "C:\Users\SA814XM\AppData\Local\miniforge3\envs\cncbi_engine_1\lib\site-packages\pandas\core\generic.py", line 3967, in to_csv
+    return DataFrameRenderer(formatter).to_csv(
+  File "C:\Users\SA814XM\AppData\Local\miniforge3\envs\cncbi_engine_1\lib\site-packages\pandas\io\formats\format.py", line 1014, in to_csv
+    csv_formatter.save()
+  File "C:\Users\SA814XM\AppData\Local\miniforge3\envs\cncbi_engine_1\lib\site-packages\pandas\io\formats\csvs.py", line 251, in save
+    with get_handle(
+  File "C:\Users\SA814XM\AppData\Local\miniforge3\envs\cncbi_engine_1\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+PermissionError: [Errno 13] Permission denied: 'C:\\Users\\SA814XM\\Engagement\\01_CNCBI\\CNCBI_ECL_Engine\\02_engine_server\\99_data\\03_output_folder\\20241231_20251124\\02_interim\\chk_3_coll_allocated.csv'
+2025-11-24 18:07:22,478 - ecl_calculation - INFO - ==================================================
+2025-11-24 18:07:22,479 - ecl_calculation - INFO - Starting ECL Calculation Process
+2025-11-24 18:07:22,479 - ecl_calculation - INFO - ==================================================
+2025-11-24 18:07:22,480 - ecl_calculation - INFO - 1.1. Loading data
+2025-11-24 18:07:25,540 - ecl_calculation - INFO - 	Data loaded successfully
+2025-11-24 18:07:25,541 - ecl_calculation - INFO - 2.1. On_Balance EAD Generation
+2025-11-24 18:07:25,550 - ecl_calculation - INFO - 	Processing Layer 1 (Schedule-based deals)...
+2025-11-24 18:07:25,550 - ecl_calculation - INFO - 	Schedule IDs found: 72
+2025-11-24 18:07:27,482 - ecl_calculation - INFO - 	Processing Layer 2 (AMRT_TYPE_CD = 100 and PMT_AMT > 0)...
+2025-11-24 18:07:27,482 - ecl_calculation - INFO - 	Remaining deals after Layer 1: 799
+2025-11-24 18:07:31,347 - ecl_calculation - INFO - 	Processing Layer 3 (Remaining deals)...
+2025-11-24 18:07:31,348 - ecl_calculation - INFO - 	Remaining deals after Layer 2: 607
+2025-11-24 18:07:38,565 - ecl_calculation - INFO - 	EAD Generation Summary:
+2025-11-24 18:07:38,577 - ecl_calculation - INFO - 	Layer 1: 72 deals in, 72 processed, 0 unprocessed
+2025-11-24 18:07:38,577 - ecl_calculation - INFO - 	Layer 2: 192 deals in, 192 processed, 0 unprocessed
+2025-11-24 18:07:38,577 - ecl_calculation - INFO - 	Layer 3: 607 deals in, 607 processed, 0 unprocessed
+2025-11-24 18:07:38,577 - ecl_calculation - INFO - 	Total deals in on_df: 871
+2025-11-24 18:07:38,872 - ecl_calculation - INFO - 	EAD generation completed
+2025-11-24 18:07:38,872 - ecl_calculation - INFO - 2.2. Off_Balance EAD Generation
+2025-11-24 18:07:39,546 - ecl_calculation - INFO - 	Off_Balance EAD generation completed
+2025-11-24 18:07:39,546 - ecl_calculation - INFO - 2.3. Generate final EAD
+2025-11-24 18:07:39,549 - ecl_calculation - INFO - 	Checking for duplicate deal_ids...
+2025-11-24 18:07:39,590 - ecl_calculation - INFO - 	Final EAD generation completed
+2025-11-24 18:07:39,591 - ecl_calculation - INFO - 3. Allocating Collateral
+2025-11-24 18:07:39,592 - ecl_calculation - INFO - 	Processing 808 collateral records
+2025-11-24 18:07:39,743 - ecl_calculation - INFO - 	Collateral allocation completed with 808 collateral records
+2025-11-24 18:07:39,803 - ecl_calculation - INFO - 	Collateral allocation completed
+2025-11-24 18:07:39,805 - ecl_calculation - INFO - 4. PD assignment
+2025-11-24 18:07:40,039 - ecl_calculation - INFO - 	PD assignment completed
+2025-11-24 18:07:40,039 - ecl_calculation - INFO - 5. LGD calculation
+2025-11-24 18:07:55,545 - ecl_calculation - INFO - 	LGD calculation completed
+2025-11-24 18:07:55,546 - ecl_calculation - INFO - 6. Discount factor calculation
+2025-11-24 18:07:55,710 - ecl_calculation - INFO - 	Discount factor calculation completed
+2025-11-24 18:07:55,710 - ecl_calculation - INFO - 7. Applying CCF to EAD
+2025-11-24 18:07:55,811 - ecl_calculation - INFO - 	CCF application to EAD completed
+2025-11-24 18:07:55,812 - ecl_calculation - INFO - 8. ECL calculation
+2025-11-24 18:07:55,980 - ecl_calculation - INFO - 	ECL calculation completed
+2025-11-24 18:07:55,981 - ecl_calculation - INFO - ==================================================
+2025-11-24 18:07:55,981 - ecl_calculation - INFO - 	ECL Calculation Process Completed Successfully
+2025-11-24 18:07:55,981 - ecl_calculation - INFO - ==================================================
+2025-11-24 18:07:55,981 - ecl_calculation - INFO - 9. Stage 3 ECL calculation
+2025-11-24 18:07:55,985 - ecl_calculation - INFO - 	Stage 3 ECL calculation completed
+2025-11-24 18:07:55,985 - ecl_calculation - INFO - 10. ECL result concat
+2025-11-24 18:07:56,049 - ecl_calculation - INFO - 	ECL result concatenation completed

@@ -1,0 +1,32 @@
+2025-05-23 18:02:12,180 - ecl_calculation - INFO - ==================================================
+2025-05-23 18:02:12,180 - ecl_calculation - INFO - Starting ECL Calculation Process
+2025-05-23 18:02:12,180 - ecl_calculation - INFO - ==================================================
+2025-05-23 18:02:12,180 - ecl_calculation - INFO - 1. Loading Parameters and Data
+2025-05-23 18:02:19,826 - ecl_calculation - INFO - 	Parameters and data loaded successfully
+2025-05-23 18:02:19,827 - ecl_calculation - INFO - 2. Performing Segmentation
+2025-05-23 18:02:19,836 - ecl_calculation - INFO - 	Segmentation completed
+2025-05-23 18:02:19,837 - ecl_calculation - INFO - 3. Performing Stage Allocation
+2025-05-23 18:02:19,849 - ecl_calculation - INFO - 	Stage allocation completed
+2025-05-23 18:02:19,849 - ecl_calculation - INFO - 4. Calculating Expected Life
+2025-05-23 18:02:20,591 - ecl_calculation - INFO - 	Expected life calculation completed
+2025-05-23 18:02:20,591 - ecl_calculation - INFO - 5. Preparing EIR
+2025-05-23 18:02:20,593 - ecl_calculation - INFO - 	EIR preparation completed
+2025-05-23 18:02:20,593 - ecl_calculation - INFO - 6. Generating EAD
+2025-05-23 18:02:20,609 - ecl_calculation - INFO - 	Processing Layer 1 (Schedule-based deals)...
+2025-05-23 18:02:21,988 - ecl_calculation - INFO - 	Processing Layer 2 (AMRT_TYPE_CD = 100 and PMT_AMT > 0)...
+2025-05-23 18:02:30,278 - ecl_calculation - INFO - 	Processing Layer 3 (Remaining deals)...
+2025-05-23 18:02:39,822 - ecl_calculation - INFO - 	EAD Generation Summary:
+2025-05-23 18:02:39,823 - ecl_calculation - INFO - 	Layer Distribution:
+2025-05-23 18:02:39,823 - ecl_calculation - INFO - 		Layer 1: 104 deals
+2025-05-23 18:02:39,823 - ecl_calculation - INFO - 		Layer 2: 462 deals
+2025-05-23 18:02:39,823 - ecl_calculation - INFO - 		Layer 3: 1320 deals
+2025-05-23 18:02:39,824 - ecl_calculation - INFO - 		Unprocessed: 325 deals
+2025-05-23 18:02:39,831 - ecl_calculation - INFO - 	Total: 1886 deals
+2025-05-23 18:02:39,831 - ecl_calculation - INFO - 	EAD generation completed in 19.24 seconds
+2025-05-23 18:02:39,831 - ecl_calculation - INFO - 7. Allocating Collateral
+2025-05-23 18:02:42,351 - ecl_calculation - INFO - 	Collateral allocation completed
+2025-05-23 18:02:42,351 - ecl_calculation - INFO - 8. Calculating LGD
+2025-05-23 18:02:51,629 - ecl_calculation - INFO - 	LGD calculation completed
+2025-05-23 18:02:51,630 - ecl_calculation - INFO - ==================================================
+2025-05-23 18:02:51,630 - ecl_calculation - INFO - 	ECL Calculation Process Completed Successfully
+2025-05-23 18:02:51,630 - ecl_calculation - INFO - ==================================================

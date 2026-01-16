@@ -1,0 +1,7 @@
+2025-11-18 16:15:16,828 - main - INFO - Starting ECL Engine Process...
+2025-11-18 16:15:16,829 - main - INFO - Run Mode: 3
+2025-11-18 16:15:16,829 - main - INFO - 	FULL SET MODE
+2025-11-18 16:15:29,488 - main - INFO - 	Parameters loaded successfully
+2025-11-18 16:15:29,488 - main - INFO - Skipping ECL Adjustment - Deal Append (not in current run mode)
+2025-11-18 16:15:29,488 - main - INFO - Skipping Pre-Run Data Sanity Check (not in current run mode)
+2025-11-18 16:15:29,488 - main - INFO - Starting ECL Calculation...

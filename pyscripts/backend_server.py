@@ -12,12 +12,13 @@ from typing import Dict
 from concurrent.futures import ProcessPoolExecutor, Future
 import time
 import zipfile
-from io import BytesIO
+from io import BytesIO, StringIO
 import pyodbc
 import sys
 from pathlib import Path
 import json
 import signal
+import csv
 from ldap3 import Server, Connection, ALL, NTLM
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -76,7 +77,10 @@ REPORT_FILES = {
     ],
     'hkma': 'reporting_ecl_hkma.xlsx',
     'audit_trial': 'reporting_ecl_audit_trial.xlsx',
-    'gl_posting': 'reporting_ecl_gl_posting.xlsx'
+    'gl_posting': [
+        'reporting_ecl_gl_posting.xlsx',
+        'Template_GL Posting_Manual Adj.xlsx'
+    ]
 }
 
 # ==============================================================================
@@ -101,7 +105,7 @@ THREADING_CONFIG = {
 DB_CONFIG = {
     'dsn': 'ECLUATFSDB',
     'username': 'eclappusr',
-    'password': 'Abcdef123456',
+    'password': os.getenv('DB_PASSWORD', ''),
     'database': 'ey_ecl',
 }
 
@@ -170,17 +174,31 @@ future_lock = threading.Lock()
 # ==============================================================================
 # 3. POLLING SETTINGS
 def format_timestamp_for_display(timestamp):
-    """Format timestamp from YYYYMMDDHHMMSS to YYYY-MM-DD HH:MM:SS"""
-    if not timestamp or len(timestamp) != 14:
+    """Format timestamp from Adhoc_Run_{DATA_YYMM}_{YYYYMMDDHHMMSS} or YYYYMMDDHHMMSS to YYYY-MM-DD HH:MM:SS"""
+    if not timestamp:
         return timestamp
 
     try:
-        year = timestamp[:4]
-        month = timestamp[4:6]
-        day = timestamp[6:8]
-        hour = timestamp[8:10]
-        minute = timestamp[10:12]
-        second = timestamp[12:14]
+        # Extract time part from new format (last 14 characters after last underscore)
+        if '_' in timestamp:
+            parts = timestamp.split('_')
+            if len(parts) >= 3:
+                time_part = parts[-1]
+            else:
+                time_part = timestamp
+        else:
+            time_part = timestamp
+        
+        # Validate time part is 14 digits
+        if len(time_part) != 14 or not time_part.isdigit():
+            return timestamp
+        
+        year = time_part[:4]
+        month = time_part[4:6]
+        day = time_part[6:8]
+        hour = time_part[8:10]
+        minute = time_part[10:12]
+        second = time_part[12:14]
         return f"{year}-{month}-{day} {hour}:{minute}:{second}"
     except:
         return timestamp
@@ -430,11 +448,25 @@ def create_prerun_validation_table():
                         ALTER TABLE [{DB_NAME}].[dbo].[UI_prerun_validation_records]
                         ADD upload_type NVARCHAR(50)
                     """)
+                
+                cursor.execute(f"""
+                    SELECT CHARACTER_MAXIMUM_LENGTH
+                    FROM [{DB_NAME}].INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'UI_prerun_validation_records' AND COLUMN_NAME = 'timestamp'
+                """)
+                timestamp_length = cursor.fetchone()
+                if timestamp_length and timestamp_length[0] and timestamp_length[0] < 50:
+                    logger.info("Altering timestamp column length to 50 for new format support")
+                    cursor.execute(f"""
+                        ALTER TABLE [{DB_NAME}].[dbo].[UI_prerun_validation_records]
+                        ALTER COLUMN timestamp NVARCHAR(50) NOT NULL
+                    """)
             
             except Exception as e:
                 logger.warning(f"Could not add new columns to existing table: {str(e)}")
             
             return True
+            
         # Create UI_prerun_validation_records table in the specific database
         logger.info("Creating UI_prerun_validation_records table...")
         cursor.execute(f"""
@@ -447,7 +479,7 @@ def create_prerun_validation_table():
                 action NVARCHAR(500) DEFAULT 'Pre-run Validation',
                 status NVARCHAR(20) DEFAULT 'Running',
                 task_id NVARCHAR(255) NOT NULL,
-                timestamp NVARCHAR(20) NOT NULL,
+                timestamp NVARCHAR(50) NOT NULL,
                 created_at DATETIME DEFAULT GETDATE(),
                 completed_at DATETIME NULL
             )
@@ -1111,6 +1143,49 @@ def get_user_records():
     except Exception as e:
         logger.error(f"Error getting user records: {str(e)}")
         return []
+
+def export_user_records_to_csv():
+    """Export all user records from database to CSV format"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark
+            FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            ORDER BY time DESC
+        """)
+        
+        # Create CSV in memory
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        writer.writerow(['User Name', 'Login Name', 'Default Role', 'Updated By', 'Time', 'Email', 'Mobile No', 'Phone No', 'Remark'])
+        
+        # Write data rows
+        for row in cursor.fetchall():
+            writer.writerow([
+                row[1] or '',  # user_name
+                row[2] or '',  # login_name
+                row[3] or '',  # default_role
+                row[4] or '',  # updated_by
+                row[5].strftime('%Y-%m-%d %H:%M:%S') if row[5] else '',  # time
+                row[6] or '',  # email
+                row[7] or '',  # mobile_no
+                row[8] or '',  # phone_no
+                row[9] or ''   # remark
+            ])
+        
+        conn.close()
+        
+        # Convert StringIO to BytesIO for download
+        csv_data = output.getvalue()
+        output.close()
+        csv_bytes = BytesIO(csv_data.encode('utf-8-sig'))  # utf-8-sig for Excel compatibility
+        
+        return csv_bytes
+    except Exception as e:
+        logger.error(f"Error exporting user records to CSV: {str(e)}")
+        return None
 
 def update_user_record(user_id, user_name, default_role, email, mobile_no, phone_no, remark, updated_by):
     """Update user record in database"""
@@ -2197,8 +2272,16 @@ def copy_original_data_only(original_timestamp: str, new_timestamp: str, base_ou
         # Extract reporting_date part from original folder name (e.g., "20241231" from "20241231_20251016")
         reporting_date_part = reporting_date_folder.split('_')[0]
         
-        # Extract date from new_timestamp (first 8 characters)
-        new_date = new_timestamp[:8]
+        # Extract date from new_timestamp (last 14 characters after last underscore, first 8 chars are date)
+        if '_' in new_timestamp:
+            parts = new_timestamp.split('_')
+            if len(parts) >= 3:
+                time_part = parts[-1]
+                new_date = time_part[:8]
+            else:
+                new_date = new_timestamp[:8]
+        else:
+            new_date = new_timestamp[:8]
         
         # Build new folder name with current date (e.g., "20241231_20251017")
         new_folder_name = f"{reporting_date_part}_{new_date}"
@@ -2238,7 +2321,12 @@ def generate_new_config_file(reporting_date: str, run_mode: str, ui_timestamp: s
         # Use UI timestamp (must be provided for consistency)
         if not ui_timestamp:
             return {'status': 'Failed', 'error': 'UI timestamp is required for consistency'}
-        timestamp = ui_timestamp
+        
+        # Get DATA_YYMM from config
+        data_yymm_str = str(config['RUN_SETTING']['DATA_YYMM'])
+        
+        # Create new timestamp format: Adhoc_Run_{DATA_YYMM}_{ui_timestamp}
+        timestamp = f"Adhoc_Run_{data_yymm_str}_{ui_timestamp}"
         
         # Modify OUTPUT_PATH to include timestamp subfolder
         base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
@@ -2288,9 +2376,15 @@ def generate_prerun_validation_config_file(parameter_folder: str = None, adjustm
         
         # Generate new timestamp for validation run
         if ui_timestamp:
-            timestamp = ui_timestamp
+            ui_ts = ui_timestamp
         else:
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            ui_ts = datetime.now().strftime('%Y%m%d%H%M%S')
+        
+        # Get DATA_YYMM from config
+        data_yymm_str = str(config['RUN_SETTING']['DATA_YYMM'])
+        
+        # Create new timestamp format: Adhoc_Run_{DATA_YYMM}_{ui_timestamp}
+        timestamp = f"Adhoc_Run_{data_yymm_str}_{ui_ts}"
         
         # Create new OUTPUT_PATH with validation timestamp
         base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
@@ -2351,7 +2445,12 @@ def generate_resume_config_file(config_filename: str, resume_run_mode: str, ui_t
         # Use UI timestamp (must be provided for consistency)
         if not ui_timestamp:
             return {'status': 'Failed', 'error': 'UI timestamp is required for consistency'}
-        timestamp = ui_timestamp
+        
+        # Get DATA_YYMM from config
+        data_yymm_str = str(config['RUN_SETTING']['DATA_YYMM'])
+        
+        # Create new timestamp format: Adhoc_Run_{DATA_YYMM}_{ui_timestamp}
+        timestamp = f"Adhoc_Run_{data_yymm_str}_{ui_timestamp}"
         
         # Extract the timestamp from the original config filename
         original_timestamp = config_filename.replace('run_config_file_', '').replace('.json', '')
@@ -2436,8 +2535,8 @@ def generate_report_config_file_from_record(record_id, ui_timestamp):
             return config_result
         
         # 4. Copy original ECL run data to new report folder
-        # Copy original data to new location
-        copy_result = copy_original_data_only(original_timestamp, ui_timestamp, base_output_path)
+        new_timestamp = config_result.get('timestamp', ui_timestamp)
+        copy_result = copy_original_data_only(original_timestamp, new_timestamp, base_output_path)
         if copy_result['status'] == 'Failed':
             logger.error(f"Failed to copy original data for report generation: {copy_result['error']}")
             return {'status': 'Failed', 'error': f'Failed to copy original data: {copy_result["error"]}'}
@@ -3266,11 +3365,18 @@ def download_single_report(report_type, report_base_path=None):
         logger.error(f"Error downloading {report_type} report: {str(e)}")
         return {'status': 'Failed', 'error': str(e)}
 
-def download_bu_reports(report_base_path=None):
-    """Download all BU Excel reports as a zip file"""
+def download_multiple_reports(report_type, report_base_path=None):
+    """Download multiple report files as a zip file"""
     try:
         from io import BytesIO
         import zipfile
+        
+        if report_type not in REPORT_FILES:
+            return {'status': 'Failed', 'error': f'Unknown report type: {report_type}'}
+        
+        filenames = REPORT_FILES[report_type]
+        if not isinstance(filenames, list):
+            return {'status': 'Failed', 'error': f'Report type {report_type} is not configured for multiple files'}
         
         if report_base_path:
             # Use dynamic report base path with timestamp
@@ -3306,26 +3412,34 @@ def download_bu_reports(report_base_path=None):
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             files_added = 0
-            for filename in REPORT_FILES['bu_excel']:
+            for filename in filenames:
                 file_path = os.path.join(result_folder, filename)
                 if os.path.exists(file_path):
                     zip_file.write(file_path, filename)
                     files_added += 1
                 else:
-                    logger.warning(f"BU report file not found: {file_path}")
+                    logger.warning(f"Report file not found (skipping): {file_path}")
             
             if files_added == 0:
-                return {'status': 'Failed', 'error': 'No BU report files found'}
+                return {'status': 'Failed', 'error': f'No {report_type} report files found'}
         
         zip_buffer.seek(0)
+        
+        # Generate ZIP filename based on report type
+        zip_filename_map = {
+            'bu_excel': 'BU_Excel_Reports.zip',
+            'gl_posting': 'GL_Posting_Reports.zip'
+        }
+        zip_filename = zip_filename_map.get(report_type, f'{report_type}_Reports.zip')
+        
         return send_file(
             zip_buffer,
             mimetype='application/zip',
             as_attachment=True,
-            download_name='BU_Excel_Reports.zip'
+            download_name=zip_filename
         )
     except Exception as e:
-        logger.error(f"Error downloading BU reports: {str(e)}")
+        logger.error(f"Error downloading {report_type} reports: {str(e)}")
         return {'status': 'Failed', 'error': str(e)}
 
 # Reporting: Download ECL Monthly Report
@@ -3374,7 +3488,7 @@ def download_bu_excel_reports():
         file_path = f"BU Excel Reports from {report_base_path}" if report_base_path else "BU Excel Reports"
         log_download_activity(maker, "Reporting", file_path)
         
-        return download_bu_reports(report_base_path)
+        return download_multiple_reports('bu_excel', report_base_path)
     except Exception as e:
         logger.error(f"Error in download_bu_excel_reports: {str(e)}")
         return jsonify({'error': f'Error downloading BU Excel Reports: {str(e)}'}), 500
@@ -3419,7 +3533,7 @@ def download_gl_posting_report():
         file_path = f"GL Posting Report from {report_base_path}" if report_base_path else "GL Posting Report"
         log_download_activity(maker, "Reporting", file_path)
         
-        return download_single_report('gl_posting', report_base_path)
+        return download_multiple_reports('gl_posting', report_base_path)
     except Exception as e:
         logger.error(f"Error in download_gl_posting_report: {str(e)}")
         return jsonify({'error': f'Error downloading GL Posting Report: {str(e)}'}), 500
@@ -3525,6 +3639,29 @@ def api_get_user_records():
         return jsonify({'status': 'success', 'records': records})
     except Exception as e:
         logger.error(f"Error in api_get_user_records: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/export_user_records', methods=['GET'])
+def api_export_user_records():
+    """Export all user records to CSV file"""
+    try:
+        csv_bytes = export_user_records_to_csv()
+        if csv_bytes is None:
+            return jsonify({'status': 'error', 'message': 'Failed to export user records'}), 500
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        filename = f'user_list_{timestamp}.csv'
+        
+        csv_bytes.seek(0)
+        return send_file(
+            csv_bytes,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logger.error(f"Error in api_export_user_records: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/save_user_record', methods=['POST'])
