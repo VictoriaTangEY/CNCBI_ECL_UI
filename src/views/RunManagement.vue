@@ -381,8 +381,7 @@ interface ReviewItem {
 // Replace hardcoded options with dynamic lists
 const runModes = ['0','1','2','3','0-5','1-5','2-5','3-5','4-5']
  
-// Reporting date options
-const reportingDateOptions = ['2025-02-24', '2024-12-31', '2024-06-30', '2024-03-31', '2023-12-31', '2023-06-30']
+const reportingDateOptions = ref<string[]>([])
  
 const router = useRouter()
 
@@ -441,7 +440,7 @@ const uniqueReportingDates = computed(() => {
       dates.add(record.settings.reportingDate)
     }
   })
-  return Array.from(dates).sort()
+  return Array.from(dates).sort((a, b) => b.localeCompare(a))
 })
 
 const filteredReportingRecords = computed(() => {
@@ -478,7 +477,7 @@ const uniqueReviewReportingDates = computed(() => {
       dates.add(record.reportingDate)
     }
   })
-  return Array.from(dates).sort()
+  return Array.from(dates).sort((a, b) => b.localeCompare(a))
 })
 
 const filteredReviewList = computed(() => {
@@ -580,8 +579,9 @@ const canResumeSubmit = computed(() => selectedResumeConfig.value !== '' && sele
 // Load data when component mounts
 onMounted(() => {
   fetchReviewListFromDB()
-  fetchResumeConfigFiles() // Fetch resume config files
-  fetchReportingRecords() // Fetch reporting records
+  fetchResumeConfigFiles()
+  fetchReportingRecords()
+  fetchReportingDates()
 })
  
 // Clean up event listener
@@ -770,7 +770,7 @@ function canGenerateReport(item: ReviewItem): boolean {
   
   // Check if run mode ends with '5'
   const runMode = item.runMode || ''
-  return runMode.endsWith('5') || runMode.endsWith('6')
+  return runMode.endsWith('5')
 }
 
 // Generate Report from Record
@@ -927,6 +927,16 @@ const fetchResumeConfigFiles = async () => {
     console.log('Resume config files updated:', resumeConfigOptions.value)
   } catch (error) {
     console.error('Error fetching resume config files:', error)
+  }
+}
+
+const fetchReportingDates = async () => {
+  try {
+    const response = await axios.get('/api/get_reporting_dates')
+    reportingDateOptions.value = response.data.dates || []
+  } catch (error) {
+    console.error('Error fetching reporting dates:', error)
+    reportingDateOptions.value = []
   }
 }
  

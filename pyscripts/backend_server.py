@@ -19,6 +19,7 @@ from pathlib import Path
 import json
 import signal
 import csv
+import re
 from ldap3 import Server, Connection, ALL, NTLM
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -90,7 +91,8 @@ AUDIT_LOGS = {
     'user_access': os.path.join(AUDIT_FOLDER, 'user_access_log.txt'),              
     'download': os.path.join(AUDIT_FOLDER, 'download_log.txt'),                    
     'ecl_confirmation': os.path.join(AUDIT_FOLDER, 'ecl_result_confirmation_log.txt'),  
-    'parameter_update': os.path.join(AUDIT_FOLDER, 'parameter_update_log.txt'),    
+    'parameter_update': os.path.join(AUDIT_FOLDER, 'parameter_update_log.txt'),
+    'ecl_job_execution': os.path.join(AUDIT_FOLDER, 'ecl_job_execution_log.txt'),
 }
 
 # ==============================================================================
@@ -819,15 +821,9 @@ def update_eclengine_status_in_db(task_id, status):
             AND JSON_VALUE(settings, '$.task_id') = ?
         """, (status, task_id))
         
-        # Check if any rows were affected
         rows_affected = cursor.rowcount
         conn.close()
-        
-        if rows_affected > 0:
-            logger.info(f"Updated DB status for task {task_id} to {status} ({rows_affected} row(s) affected)")
-        else:
-            logger.warning(f"No rows updated for task {task_id}. This might be a non-UI triggered run with NULL settings.")
-    
+       
     except Exception as e:
         logger.error(f"Error updating ECL engine status in DB for {task_id}: {str(e)}")
 
@@ -2909,6 +2905,41 @@ def api_get_reporting_records():
         logger.error(f"Error getting reporting records: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+# Get Reporting Dates from batch_calendar.txt
+@app.route('/get_reporting_dates', methods=['GET'])
+def api_get_reporting_dates():
+    try:
+        calendar_file = os.path.join(BASE_ECL_ENGINE, 'batch_calendar.txt')
+        if not os.path.exists(calendar_file):
+            logger.warning(f"Calendar file not found: {calendar_file}")
+            return jsonify({'dates': []}), 200
+        
+        today = datetime.now().date()
+        dates = []
+        
+        with open(calendar_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                match = re.match(r'(\d{4}-\d{2}-\d{2})', line)
+                if match:
+                    date_str = match.group(1)
+                    try:
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                        if date_obj <= today:
+                            dates.append(date_str)
+                    except ValueError:
+                        logger.warning(f"Invalid date format: {date_str}")
+                        continue
+        
+        dates.sort(reverse=True)
+        return jsonify({'dates': dates}), 200
+    except Exception as e:
+        logger.error(f"Error getting reporting dates: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 # Reporting Status Check
 @app.route('/reporting_status/<task_id>', methods=['GET'])
 def get_reporting_status(task_id):
@@ -4010,6 +4041,69 @@ def log_parameter_update(user_name, operation_type, file_type, file_path):
         logger.error(f"Error logging parameter update: {str(e)}")
         return False
 
+def generate_ecl_job_execution_log():
+    """Generate ECL job execution log from database records where maker = 'Batch Run'"""
+    try:
+        create_audit_trial_folder()
+        
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT time, settings, action, status, checker
+            FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE maker = 'Batch Run'
+            ORDER BY time DESC
+        """)
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_content = f"ECL Job Execution Log\n"
+        log_content += f"Generated: {current_time}\n"
+        log_content += "=" * 80 + "\n\n"
+        
+        if not records:
+            log_content += "No Batch Run records found.\n"
+        else:
+            for row in records:
+                time = row[0]
+                settings = row[1] or ''
+                action = row[2] or ''
+                status = row[3] or ''
+                checker = row[4] or 'Waiting'
+                
+                time_str = time.strftime('%Y-%m-%d %H:%M:%S') if isinstance(time, datetime) else str(time)
+                
+                settings_dict = {}
+                try:
+                    if settings:
+                        settings_dict = json.loads(settings) if isinstance(settings, str) else settings
+                except:
+                    pass
+                
+                reporting_date = settings_dict.get('reportingDate', 'N/A')
+                run_mode = settings_dict.get('runMode', 'N/A')
+                timestamp = settings_dict.get('timestamp', 'N/A')
+                
+                log_entry = f"[{time_str}] Reporting Date: {reporting_date} | Run Mode: {run_mode} | Action: {action} | Status: {status} | Checker: {checker} | Timestamp: {timestamp}\n"
+                log_content += log_entry
+        
+        temp_file = BytesIO()
+        temp_file.write(log_content.encode('utf-8'))
+        temp_file.seek(0)
+        
+        return send_file(
+            temp_file,
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name='ecl_job_execution_log.txt'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating ECL job execution log: {str(e)}")
+        return jsonify({'error': f'Error generating log: {str(e)}'}), 500
+
 @app.route('/download_audit_log/<log_type>', methods=['GET'])
 def download_audit_log(log_type):
     """Download audit log files"""
@@ -4031,14 +4125,14 @@ def download_audit_log(log_type):
         elif log_type == 'user_access':
             log_file = AUDIT_LOGS['user_access']
             filename = 'user_access_log.txt'
+        elif log_type == 'ecl_job_execution':
+            return generate_ecl_job_execution_log()
         elif log_type == 'all_admin_logs':
-            # Create a combined log file for all admin logs
             return create_all_admin_logs()
         else:
             return jsonify({'error': 'Invalid log type'}), 400
         
         if not os.path.exists(log_file):
-            # Create empty file if it doesn't exist
             with open(log_file, 'w', encoding='utf-8') as f:
                 f.write(f"Audit Log - {log_type.replace('_', ' ').title()}\n")
                 f.write(f"Created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")

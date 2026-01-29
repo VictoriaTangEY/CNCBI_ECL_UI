@@ -6,8 +6,7 @@ import RoleManagement from '../views/RoleManagement.vue'
 import AuditTrial from '../views/AuditTrial.vue'
 import Reporting from '../views/Reporting.vue'
 import Login from '../views/Login.vue'
-import { isAuthenticated } from '../services/authService'
- 
+import { isAuthenticated, waitForAuthInit } from '../services/authService'
 const routes = [
   {
     path: '/login',
@@ -52,25 +51,21 @@ const routes = [
     meta: { requiresAuth: true }
   }
 ]
- 
 const router = createRouter({
   history: createWebHistory('/ecl/'),
   routes
 })
-
-// Navigation Guards
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
+  await waitForAuthInit()
+  
   const requiresAuth = to.meta.requiresAuth !== false
   const userAuthenticated = isAuthenticated()
-
+  
   if (requiresAuth && !userAuthenticated) {
-    // Redirect to login if authentication is required but user is not authenticated
     next('/login')
   } else if (to.path === '/login' && userAuthenticated) {
-    // Redirect to home if user is already authenticated and trying to access login
     next('/')
   } else {
-    // Allow navigation
     next()
   }
 })
