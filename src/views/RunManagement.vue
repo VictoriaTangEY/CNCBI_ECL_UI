@@ -148,6 +148,13 @@
               <option value="Failed">Failed</option>
             </select>
           </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-weight: 500; color: #333;">Run Mode:</label>
+            <select v-model="reviewRunModeFilter" class="select-input" style="min-width: 120px;">
+              <option value="">All Run Modes</option>
+              <option v-for="mode in uniqueReviewRunModes" :key="mode" :value="mode">{{ mode }}</option>
+            </select>
+          </div>
           <button @click="clearReviewFilters" class="step-btn" style="background: #6c757d; color: white; padding: 8px 16px; font-size: 14px;">
             Clear Filters
           </button>
@@ -421,6 +428,7 @@ const statusFilter = ref('')
 // Add new refs for review filtering
 const reviewReportingDateFilter = ref('')
 const reviewStatusFilter = ref('')
+const reviewRunModeFilter = ref('')
  
 function closeProcessPopup() {
   showProcessPopup.value = false
@@ -480,6 +488,16 @@ const uniqueReviewReportingDates = computed(() => {
   return Array.from(dates).sort((a, b) => b.localeCompare(a))
 })
 
+const uniqueReviewRunModes = computed(() => {
+  const modes = new Set<string>()
+  reviewList.value.forEach(record => {
+    if (record.runMode) {
+      modes.add(record.runMode)
+    }
+  })
+  return Array.from(modes).sort()
+})
+
 const filteredReviewList = computed(() => {
   let filtered = reviewList.value
   
@@ -492,6 +510,12 @@ const filteredReviewList = computed(() => {
   if (reviewStatusFilter.value) {
     filtered = filtered.filter(record => 
       record.status === reviewStatusFilter.value
+    )
+  }
+
+  if (reviewRunModeFilter.value) {
+    filtered = filtered.filter(record =>
+      record.runMode === reviewRunModeFilter.value
     )
   }
   
@@ -511,6 +535,7 @@ function clearFilters() {
 function clearReviewFilters() {
   reviewReportingDateFilter.value = ''
   reviewStatusFilter.value = ''
+  reviewRunModeFilter.value = ''
 }
 
 async function confirmSelectedReporting() {

@@ -97,10 +97,10 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
     authenticated.value = true
     validUser.value = true
 
-    // Store in localStorage for persistence
-    localStorage.setItem('user', JSON.stringify(user.value))
-    localStorage.setItem('permissions', JSON.stringify(userPermissions.value))
-    localStorage.setItem('authenticated', 'true')
+  // Store in sessionStorage for persistence in current tab
+  sessionStorage.setItem('user', JSON.stringify(user.value))
+  sessionStorage.setItem('permissions', JSON.stringify(userPermissions.value))
+  sessionStorage.setItem('authenticated', 'true')
 
     return {
       success: true,
@@ -157,17 +157,17 @@ export async function logout(): Promise<void> {
     userPermissions.value = []
     error.value = null
 
-    // Clear localStorage
-    localStorage.removeItem('user')
-    localStorage.removeItem('permissions')
-    localStorage.removeItem('authenticated')
+    // Clear sessionStorage
+    sessionStorage.removeItem('user')
+    sessionStorage.removeItem('permissions')
+    sessionStorage.removeItem('authenticated')
   }
 }
 
 export async function checkAuthStatus(): Promise<void> {
-  const storedUser = localStorage.getItem('user')
-  const storedPermissions = localStorage.getItem('permissions')
-  const storedAuth = localStorage.getItem('authenticated')
+  const storedUser = sessionStorage.getItem('user')
+  const storedPermissions = sessionStorage.getItem('permissions')
+  const storedAuth = sessionStorage.getItem('authenticated')
 
   if (!storedUser || !storedPermissions || storedAuth !== 'true') {
     clearAuthState()
@@ -200,10 +200,10 @@ function clearAuthState(): void {
   userPermissions.value = []
   error.value = null
 
-  // Clear localStorage
-  localStorage.removeItem('user')
-  localStorage.removeItem('permissions')
-  localStorage.removeItem('authenticated')
+  // Clear sessionStorage
+  sessionStorage.removeItem('user')
+  sessionStorage.removeItem('permissions')
+  sessionStorage.removeItem('authenticated')
 }
 
 export async function initializeAuth(): Promise<void> {

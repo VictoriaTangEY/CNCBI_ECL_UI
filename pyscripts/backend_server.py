@@ -19,7 +19,6 @@ from pathlib import Path
 import json
 import signal
 import csv
-import re
 from ldap3 import Server, Connection, ALL, NTLM
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -2502,8 +2501,17 @@ def generate_report_config_file_from_record(record_id, ui_timestamp):
         if not original_record:
             return {'status': 'Failed', 'error': 'Original record not found'}
         
-        # 2. Build original config filename
-        original_timestamp = original_record['settings'].get('timestamp', '')
+        # Ensure settings is a dict
+        settings = original_record.get('settings', {}) or {}
+        if isinstance(settings, str):
+            try:
+                settings = json.loads(settings)
+            except Exception:
+                logger.error(f"Failed to parse settings JSON for record {record_id}")
+                settings = {}
+        
+        # 2. Get original timestamp from settings
+        original_timestamp = settings.get('timestamp', '')
         if not original_timestamp:
             return {'status': 'Failed', 'error': 'Original timestamp not found in record settings'}
         
@@ -2520,9 +2528,28 @@ def generate_report_config_file_from_record(record_id, ui_timestamp):
             logger.error(f"Failed to read config file for base output path: {str(e)}")
             return {'status': 'Failed', 'error': f'Failed to read config file: {str(e)}'}
         
-        # 3. Use our modified function to ensure all functionality is preserved
+        # 3. Determine reporting date for this record
+        # Always derive reporting date from the record itself, not from the template
+        reporting_date = settings.get('reportingDate') or settings.get('reporting_date')
+        
+        # Fallback: try to derive reporting date from original_timestamp
+        # original_timestamp format: Adhoc_Run_YYYYMMDD_YYYYMMDDHHMMSS
+        if not reporting_date and original_timestamp:
+            parts = original_timestamp.split('_')
+            # Expect at least: ['Adhoc', 'Run', 'YYYYMMDD', 'YYYYMMDDHHMMSS']
+            if len(parts) >= 3 and len(parts[2]) == 8 and parts[2].isdigit():
+                date_str = parts[2]  # YYYYMMDD
+                reporting_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+        
+        if not reporting_date:
+            logger.error(f"Reporting date not found for record {record_id}. Settings: {settings}")
+            return {'status': 'Failed', 'error': 'Reporting date not found in original record settings'}
+        
+        # 4. Use our modified function to ensure all functionality is preserved
+        #    Here reporting_date is guaranteed to come from the record/its timestamp,
+        #    so DATA_YYMM will not be affected by manual edits to the template config.
         config_result = generate_new_config_file(
-            reporting_date=original_record['settings'].get('reporting_date', ''),
+            reporting_date=reporting_date,
             run_mode='6',  # Fixed to 6
             ui_timestamp=ui_timestamp  # Use UI timestamp to ensure consistency
         )
@@ -2530,7 +2557,7 @@ def generate_report_config_file_from_record(record_id, ui_timestamp):
         if config_result['status'] == 'Failed':
             return config_result
         
-        # 4. Copy original ECL run data to new report folder
+        # 5. Copy original ECL run data to new report folder
         new_timestamp = config_result.get('timestamp', ui_timestamp)
         copy_result = copy_original_data_only(original_timestamp, new_timestamp, base_output_path)
         if copy_result['status'] == 'Failed':
@@ -2809,6 +2836,12 @@ def generate_report_from_record():
             return jsonify({'error': 'Only records with run mode ending in 5 can generate reports'}), 400
         
         # Generate report config file
+        # IMPORTANT:
+        # - The report run's DATA_YYMM / run_yymm must be derived from the
+        #   original record itself (DB settings / original timestamp),
+        #   NOT from the mutable template run_config_file.json.
+        # - This avoids issues where someone manually edits the template's
+        #   RUN_YYMM and causes Generate Report to pick up the wrong date.
         config_result = generate_report_config_file_from_record(record_id, timestamp)
         if config_result['status'] == 'Failed':
             return jsonify({'error': f'Failed to generate report config: {config_result["error"]}'}), 500
@@ -2905,36 +2938,39 @@ def api_get_reporting_records():
         logger.error(f"Error getting reporting records: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# Get Reporting Dates from batch_calendar.txt
+# Get Reporting Dates from batch_status.log
 @app.route('/get_reporting_dates', methods=['GET'])
 def api_get_reporting_dates():
     try:
-        calendar_file = os.path.join(BASE_ECL_ENGINE, 'batch_calendar.txt')
-        if not os.path.exists(calendar_file):
-            logger.warning(f"Calendar file not found: {calendar_file}")
+        status_file = os.path.join(BASE_ECL_ENGINE, 'batch_status.log')
+        if not os.path.exists(status_file):
+            logger.warning(f"Status file not found: {status_file}")
             return jsonify({'dates': []}), 200
-        
+
         today = datetime.now().date()
-        dates = []
-        
-        with open(calendar_file, 'r', encoding='utf-8') as f:
+        dates_set = set()
+
+        with open(status_file, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith('#'):
+                if not line:
                     continue
-                
-                match = re.match(r'(\d{4}-\d{2}-\d{2})', line)
-                if match:
-                    date_str = match.group(1)
-                    try:
-                        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-                        if date_obj <= today:
-                            dates.append(date_str)
-                    except ValueError:
-                        logger.warning(f"Invalid date format: {date_str}")
-                        continue
-        
-        dates.sort(reverse=True)
+
+                parts = line.split(':', 1)
+                if not parts:
+                    continue
+
+                date_str = parts[0].strip()
+                try:
+                    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    logger.warning(f"Invalid date format in batch_status.log: {date_str}")
+                    continue
+
+                if date_obj <= today:
+                    dates_set.add(date_str)
+
+        dates = sorted(dates_set, reverse=True)
         return jsonify({'dates': dates}), 200
     except Exception as e:
         logger.error(f"Error getting reporting dates: {str(e)}")
@@ -3660,6 +3696,48 @@ def check_report_availability_for_timestamp(timestamp):
         logger.error(f"Error checking report availability for timestamp {timestamp}: {str(e)}")
         return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500 
 
+@app.route('/confirm_ecl_result', methods=['POST'])
+def confirm_ecl_result():
+    """Confirm ECL result and log the confirmation"""
+    try:
+        data = request.get_json()
+        task_id = data.get('task_id')
+        timestamp = data.get('timestamp')
+        
+        if not task_id or not timestamp:
+            return jsonify({'error': 'Missing task_id or timestamp'}), 400
+        
+        # Get the settings from database
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT settings, maker FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE settings IS NOT NULL
+            AND ISJSON(settings) = 1
+            AND JSON_VALUE(settings, '$.task_id') = ?
+        """, (task_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({'error': 'Record not found'}), 404
+        
+        settings = row[0] if row[0] else '{}'
+        maker = row[1] if row[1] else 'Unknown User'
+        
+        # Log ECL result confirmation
+        log_ecl_result_confirmation(maker, timestamp, settings)
+        
+        return jsonify({
+            'message': 'ECL result confirmed successfully',
+            'task_id': task_id,
+            'timestamp': timestamp
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error confirming ECL result: {str(e)}")
+        return jsonify({'error': f'Error confirming ECL result: {str(e)}'}), 500
+ 
 # ==============================================================================
 # 5. ROLE MANAGEMENT
 @app.route('/get_user_records', methods=['GET'])
@@ -4143,48 +4221,6 @@ def download_audit_log(log_type):
         logger.error(f"Error downloading audit log {log_type}: {str(e)}")
         return jsonify({'error': f'Error downloading log: {str(e)}'}), 500
 
-@app.route('/confirm_ecl_result', methods=['POST'])
-def confirm_ecl_result():
-    """Confirm ECL result and log the confirmation"""
-    try:
-        data = request.get_json()
-        task_id = data.get('task_id')
-        timestamp = data.get('timestamp')
-        
-        if not task_id or not timestamp:
-            return jsonify({'error': 'Missing task_id or timestamp'}), 400
-        
-        # Get the settings from database
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT settings, maker FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-            WHERE settings IS NOT NULL
-            AND ISJSON(settings) = 1
-            AND JSON_VALUE(settings, '$.task_id') = ?
-        """, (task_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            return jsonify({'error': 'Record not found'}), 404
-        
-        settings = row[0] if row[0] else '{}'
-        maker = row[1] if row[1] else 'Unknown User'
-        
-        # Log ECL result confirmation
-        log_ecl_result_confirmation(maker, timestamp, settings)
-        
-        return jsonify({
-            'message': 'ECL result confirmed successfully',
-            'task_id': task_id,
-            'timestamp': timestamp
-        }), 200
-    
-    except Exception as e:
-        logger.error(f"Error confirming ECL result: {str(e)}")
-        return jsonify({'error': f'Error confirming ECL result: {str(e)}'}), 500
- 
 ################################################################################################################################################################
 #                           LOGIN AUTHENTICATION
 ################################################################################################################################################################
