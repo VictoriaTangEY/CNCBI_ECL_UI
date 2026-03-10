@@ -1,14 +1,14 @@
 <template>
   <div style="display: flex; min-height: 100vh; margin-top: 95px;">
-    <!-- 左侧导航栏 -->
+    <!-- Left sidebar -->
     <aside style="width: 280px; background-color: #f5f5f5; padding: 30px 20px;">
       <h3 style="font-weight: bold; font-size: 22px; margin-bottom: 24px;">Run Management</h3>
     </aside>
  
-    <!-- 主体内容 -->
+    <!-- Main content -->
     <main style="flex-grow: 1; padding: 40px;">
      
-      <!-- 面包屑导航 -->
+      <!-- Breadcrumb -->
       <nav aria-label="breadcrumb" class="breadcrumb-nav">
         <ol class="breadcrumb-list">
           <li><svg style="width:16px; height:16px; fill:#666; vertical-align:middle;" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg> Home</li>
@@ -93,7 +93,7 @@
             <ul class="instructions-list">
               <li>1. Please choose reporting date, run mode and fill in action comment, then submit to generate the run record.</li>
               <li>2. To resume a failed run, select the configuration file and choose the resume run mode.</li>
-              <li>3. To generate reports, click the "Generate Report" button in the Review table for completed records.</li>
+              <li>3. For completed runs, select the records and click Confirm to mark as Confirmed; confirmed records appear in the Reporting page for report download.</li>
             </ul>
             <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px; border-left: 4px solid #153D77;">
               <h4 style="margin: 0 0 10px 0; color: #153D77; font-size: 16px;">Run Mode Description:</h4>
@@ -131,7 +131,7 @@
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Review</h2>
         
         <!-- Filter Section -->
-        <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+          <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <label style="font-weight: 500; color: #333;">Reporting Date:</label>
             <select v-model="reviewReportingDateFilter" class="select-input" style="min-width: 150px;">
@@ -145,6 +145,7 @@
               <option value="">All Status</option>
               <option value="Running">Running</option>
               <option value="Completed">Completed</option>
+              <option value="Confirmed">Confirmed</option>
               <option value="Failed">Failed</option>
             </select>
           </div>
@@ -164,6 +165,7 @@
           <table style="width: 100%; border-collapse: collapse; background: white;">
             <thead style="background: #f7f7f7; position: sticky; top: 0; z-index: 1;">
               <tr>
+                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 20px;"></th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Maker</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 150px;">Time</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 18px;">Settings</th>
@@ -172,11 +174,17 @@
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Checker</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download Logs</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download ECL Results</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 120px;">Generate Report</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(item, index) in filteredReviewList" :key="index" :style="{ backgroundColor: item.approved ? '#e8f5e9' : '#fff' }">
+              <tr v-for="(item, index) in filteredReviewList" :key="index" :style="{ backgroundColor: item.status === 'Confirmed' ? '#fff3cd' : item.approved ? '#e8f5e9' : '#fff' }">
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
+                  <input
+                    type="checkbox"
+                    v-model="item.selected"
+                    :disabled="item.status !== 'Completed' && item.status !== 'Confirmed'"
+                  />
+                </td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
                 <td style="text-align: left; padding: 16px 18px; border-bottom: 1px solid #e0e0e0; min-width: 260px; font-size: 15px; line-height: 1.7;">
@@ -186,17 +194,13 @@
                   <div v-if="item.isResume" class="param-item">
                     <span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span>
                   </div>
-                  <div v-if="item.isGenerateReport" class="param-item">
-                    <span class="param-label">Selected version:</span> <span class="param-value">{{ item.resumedVersion }}</span>
-                  </div>
-                  <div v-if="item.isGenerateReport" class="param-item">
-                    <span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span>
-                  </div>
-                  <div v-if="!item.isResume && !item.isGenerateReport" class="param-item">
-                    <span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.reportingDate }}</span>
-                  </div>
-                  <div v-if="!item.isResume && !item.isGenerateReport" class="param-item">
-                    <span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span>
+                  <div v-else>
+                    <div class="param-item">
+                      <span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.reportingDate }}</span>
+                    </div>
+                    <div class="param-item">
+                      <span class="param-label">Run mode:</span> <span class="param-value">{{ item.runMode }}</span>
+                    </div>
                   </div>
                 </td>
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
@@ -208,127 +212,26 @@
                 <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
                   <button @click="downloadEclResults(index)" style="color: #333; cursor: pointer; font-size: 20px; background: none; border: none;">⬇️</button>
                 </td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                  <button
-                    @click="generateReportFromRecord(index)"
-                    :disabled="!canGenerateReport(item)"
-                    class="generate-report-btn"
-                    style="padding: 6px 12px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;"
-                    :style="{
-                      background: canGenerateReport(item) ? '#4CAF50' : '#ccc',
-                      cursor: canGenerateReport(item) ? 'pointer' : 'not-allowed'
-                    }"
-                  >
-                    Generate Report
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
- 
-      <!-- Reporting Records Table -->
-      <div style="margin-top: 40px;">
-        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Reporting Records</h2>
-        
-        <!-- Filter Section -->
-        <div style="margin-bottom: 15px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="font-weight: 500; color: #333;">Reporting Date:</label>
-            <select v-model="reportingDateFilter" class="select-input" style="min-width: 150px;">
-              <option value="">All Dates</option>
-              <option v-for="date in uniqueReportingDates" :key="date" :value="date">{{ date }}</option>
-            </select>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="font-weight: 500; color: #333;">Status:</label>
-            <select v-model="statusFilter" class="select-input" style="min-width: 120px;">
-              <option value="">All Status</option>
-              <option value="Running">Running</option>
-              <option value="Completed">Completed</option>
-              <option value="Failed">Failed</option>
-              <option value="Confirmed">Confirmed</option>
-            </select>
-          </div>
-          <button @click="clearFilters" class="step-btn" style="background: #6c757d; color: white; padding: 8px 16px; font-size: 14px;">
-            Clear Filters
-          </button>
-        </div>
-        
-        <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
-          <table style="width: 100%; border-collapse: collapse; background: white;">
-            <thead style="background: #f7f7f7; position: sticky; top: 0; z-index: 1;">
-              <tr>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 20px;"></th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Maker</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 150px;">Time</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Settings</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 350px;">Action</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 80px;">Status</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Checker</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download Logs</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download Reports</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item, index) in filteredReportingRecords" :key="index" :style="{ backgroundColor: item.status === 'Completed' ? '#e8f5e9' : item.status === 'Confirmed' ? '#fff3cd' : '#fff' }">
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                  <input 
-                    type="checkbox" 
-                    v-model="item.selected" 
-                    :disabled="item.status !== 'Completed' && item.status !== 'Confirmed'"
-                  />
-                </td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.time }}</td>
-                <td style="text-align: left; padding: 16px 18px; border-bottom: 1px solid #e0e0e0; min-width: 260px; font-size: 15px; line-height: 1.7;">
-                  <div class="param-item">
-                    <span class="param-label">Reporting Date:</span> <span class="param-value">{{ item.settings.reportingDate || 'N/A' }}</span>
-                  </div>
-                  <div class="param-item">
-                    <span class="param-label">Run Mode:</span> <span class="param-value">{{ item.settings.runMode || 'N/A' }}</span>
-                  </div>
-                </td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.status }}</td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                  <button @click="downloadReportingLogs(index)" style="color: #333; cursor: pointer; font-size: 20px; background: none; border: none;">⬇️</button>
-                </td>
-                <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                  <button
-                    @click="downloadReportingReports(index)"
-                    :disabled="item.status !== 'Completed'"
-                    style="color: #333; cursor: pointer; font-size: 20px; background: none; border: none;"
-                    :style="{
-                      color: item.status === 'Completed' ? '#333' : '#ccc',
-                      cursor: item.status === 'Completed' ? 'pointer' : 'not-allowed'
-                    }"
-                  >
-                    ▶️
-                  </button>
-                </td>
               </tr>
             </tbody>
           </table>
         </div>
         <div style="margin-top: 3px; text-align: right; display: flex; gap: 10px; justify-content: flex-end;">
-          <button 
-            class="upload-button" 
-            style="background: #FF612C;" 
-            @click="confirmSelectedReporting"
-            :disabled="!hasSelectedCompletedReporting"
-            :title="hasSelectedCompletedReporting ? 'Confirm selected completed records' : 'No completed records selected'"
+          <button
+            class="upload-button"
+            style="background: #FF612C;"
+            @click="confirmSelectedReview"
+            :disabled="!hasSelectedCompletedReview"
+            :title="hasSelectedCompletedReview ? 'Confirm selected completed records' : 'No completed records selected'"
           >
             Confirm
           </button>
-          <button 
-            class="upload-button" 
-            style="background: #6c757d;" 
-            @click="unconfirmSelectedReporting"
-            :disabled="!hasSelectedConfirmedReporting"
-            :title="hasSelectedConfirmedReporting ? 'Unconfirm selected confirmed records' : 'No confirmed records selected'"
+          <button
+            class="upload-button"
+            style="background: #6c757d;"
+            @click="unconfirmSelectedReview"
+            :disabled="!hasSelectedConfirmedReview"
+            :title="hasSelectedConfirmedReview ? 'Unconfirm selected confirmed records' : 'No confirmed records selected'"
           >
             Unconfirm
           </button>
@@ -361,7 +264,6 @@
  
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { getUserDisplayName } from '../services/authService'
  
@@ -376,13 +278,13 @@ interface ReviewItem {
   status: string
   checker: string
   approved: boolean
+  selected?: boolean
   downloaded?: boolean // Download status (optional, not used for UI)
   eclResultsDownloaded?: boolean // ECL results download status (optional, not used for UI)
   taskId?: string // Added taskId to the interface
   timestamp?: string // Added timestamp to the interface
   isResume?: boolean // Added isResume flag
   resumedVersion?: string // Added resumedVersion for resume records
-  isGenerateReport?: boolean // Added isGenerateReport flag
 }
  
 // Replace hardcoded options with dynamic lists
@@ -390,8 +292,6 @@ const runModes = ['0','1','2','3','0-5','1-5','2-5','3-5','4-5']
  
 const reportingDateOptions = ref<string[]>([])
  
-const router = useRouter()
-
 const selectedReportingDate = ref('')
 const selectedRunMode = ref('')
 const actionComment = ref('')
@@ -409,9 +309,6 @@ const step3Complete = ref(false) // Added step3Complete
  
 // Review list with localStorage persistence
 const reviewList = ref<ReviewItem[]>([])
- 
-// Reporting Records list
-const reportingRecords = ref<any[]>([])
 
 // Add new refs for process monitoring
 const showProcessPopup = ref(false)
@@ -420,10 +317,6 @@ const processPopupClosed = ref(false)
 // Add new refs for download monitoring
 const showDownloadPopup = ref(false)
 const downloadPopupClosed = ref(false)
-
-// Add new refs for reporting records filtering and selection
-const reportingDateFilter = ref('')
-const statusFilter = ref('')
 
 // Add new refs for review filtering
 const reviewReportingDateFilter = ref('')
@@ -440,44 +333,7 @@ function closeDownloadPopup() {
   downloadPopupClosed.value = true
 }
 
-// Computed properties for filtering and selection
-const uniqueReportingDates = computed(() => {
-  const dates = new Set<string>()
-  reportingRecords.value.forEach(record => {
-    if (record.settings?.reportingDate) {
-      dates.add(record.settings.reportingDate)
-    }
-  })
-  return Array.from(dates).sort((a, b) => b.localeCompare(a))
-})
-
-const filteredReportingRecords = computed(() => {
-  let filtered = reportingRecords.value
-  
-  if (reportingDateFilter.value) {
-    filtered = filtered.filter(record => 
-      record.settings?.reportingDate === reportingDateFilter.value
-    )
-  }
-  
-  if (statusFilter.value) {
-    filtered = filtered.filter(record => 
-      record.status === statusFilter.value
-    )
-  }
-  
-  return filtered
-})
-
-const hasSelectedCompletedReporting = computed(() => {
-  return filteredReportingRecords.value.some(item => item.selected && item.status === 'Completed')
-})
-
-const hasSelectedConfirmedReporting = computed(() => {
-  return filteredReportingRecords.value.some(item => item.selected && item.status === 'Confirmed')
-})
-
-// Computed properties for review filtering
+// Computed properties for review filtering and selection
 const uniqueReviewReportingDates = computed(() => {
   const dates = new Set<string>()
   reviewList.value.forEach(record => {
@@ -522,15 +378,13 @@ const filteredReviewList = computed(() => {
   return filtered
 })
 
-// Methods for reporting records
-function clearFilters() {
-  reportingDateFilter.value = ''
-  statusFilter.value = ''
-  // Clear all selections
-  reportingRecords.value.forEach(item => {
-    item.selected = false
-  })
-}
+const hasSelectedCompletedReview = computed(() => {
+  return filteredReviewList.value.some(item => item.selected && item.status === 'Completed')
+})
+
+const hasSelectedConfirmedReview = computed(() => {
+  return filteredReviewList.value.some(item => item.selected && item.status === 'Confirmed')
+})
 
 function clearReviewFilters() {
   reviewReportingDateFilter.value = ''
@@ -538,66 +392,40 @@ function clearReviewFilters() {
   reviewRunModeFilter.value = ''
 }
 
-async function confirmSelectedReporting() {
-  const selectedRecords = filteredReportingRecords.value.filter(item => item.selected && item.status === 'Completed')
-  
+async function confirmSelectedReview() {
+  const selectedRecords = filteredReviewList.value.filter(item => item.selected && item.status === 'Completed')
   if (selectedRecords.length === 0) return
-  
-  // Process the first selected record (since only one can be selected at a time based on UI)
-  const selectedRecord = selectedRecords[0]
-  const taskId = selectedRecord.task_id
-  
+  const recordIds = selectedRecords.map(r => r.id).filter(id => id != null)
+  if (recordIds.length === 0) return
   try {
-    await axios.post('/api/confirm_reporting_record', {
-      task_id: taskId,
+    await axios.post('/api/confirm_run_record', {
+      record_ids: recordIds,
       checker: getUserDisplayName()
     })
-    
-    // Refresh reporting records
-    await fetchReportingRecords()
-    
-    // Clear selection after refresh
-    const refreshedRecord = reportingRecords.value.find(item => item.task_id === taskId)
-    if (refreshedRecord) {
-      refreshedRecord.selected = false
-    }
+    await fetchReviewListFromDB()
   } catch (error) {
-    console.error('Error confirming reporting record:', error)
-    alert('Failed to confirm reporting record. Please try again.')
+    console.error('Error confirming run record:', error)
+    alert('Failed to confirm run record(s). Please try again.')
   }
 }
 
-async function unconfirmSelectedReporting() {
-  const selectedRecords = filteredReportingRecords.value.filter(item => item.selected && item.status === 'Confirmed')
-  
+async function unconfirmSelectedReview() {
+  const selectedRecords = filteredReviewList.value.filter(item => item.selected && item.status === 'Confirmed')
   if (selectedRecords.length === 0) return
-  
-  // Process the first selected record (since only one can be selected at a time based on UI)
-  const selectedRecord = selectedRecords[0]
-  const taskId = selectedRecord.task_id
-  
+  const recordIds = selectedRecords.map(r => r.id).filter(id => id != null)
+  if (recordIds.length === 0) return
   try {
-    await axios.post('/api/unconfirm_reporting_record', {
-      task_id: taskId,
+    await axios.post('/api/unconfirm_run_record', {
+      record_ids: recordIds,
       checker: getUserDisplayName()
     })
-    
-    // Refresh reporting records
-    await fetchReportingRecords()
-    
-    // Clear selection after refresh
-    const refreshedRecord = reportingRecords.value.find(item => item.task_id === taskId)
-    if (refreshedRecord) {
-      refreshedRecord.selected = false
-    }
+    await fetchReviewListFromDB()
   } catch (error) {
-    console.error('Error unconfirming reporting record:', error)
-    alert('Failed to unconfirm reporting record. Please try again.')
+    console.error('Error unconfirming run record:', error)
+    alert('Failed to unconfirm run record(s). Please try again.')
   }
 }
- 
- 
- 
+
 const canSubmit = computed(() => selectedReportingDate.value !== '' && selectedRunMode.value !== '' && actionComment.value.trim() !== '')
 const canResumeSubmit = computed(() => selectedResumeConfig.value !== '' && selectedResumeRunMode.value !== '' && resumeActionComment.value.trim() !== '')
  
@@ -605,7 +433,6 @@ const canResumeSubmit = computed(() => selectedResumeConfig.value !== '' && sele
 onMounted(() => {
   fetchReviewListFromDB()
   fetchResumeConfigFiles()
-  fetchReportingRecords()
   fetchReportingDates()
 })
  
@@ -628,7 +455,7 @@ async function onSubmit() {
     showProcessPopup.value = true
     processPopupClosed.value = false
  
-    // 提交任务，获取 task_id，并传递UI timestamp
+    // Submit task, get task_id, pass UI timestamp
     const runResponse = await axios.post('/api/run_ecl_engine', {
       reportingDate: selectedReportingDate.value,
       runMode: selectedRunMode.value,
@@ -640,9 +467,9 @@ async function onSubmit() {
     const taskId = runResponse.data.task_id
     const backendTimestamp = runResponse.data.timestamp || uiTimestamp
  
-    // 立即添加到review列表，初始状态为 Running
+    // Add to review list immediately with status Running
     reviewList.value.unshift({
-      id: 0, // 临时ID，实际ID会在数据库保存后更新
+      id: 0, // Temporary ID, will be updated after DB save
       maker: getUserDisplayName(),
       time: timeStr,
       reportingDate: selectedReportingDate.value,
@@ -653,16 +480,16 @@ async function onSubmit() {
       approved: false,
       downloaded: false,
       eclResultsDownloaded: false, // Initialize ECL results download status
-      taskId, // 新增字段
-      timestamp: backendTimestamp // 保存timestamp用于后续查找
+      taskId,
+      timestamp: backendTimestamp
     })
  
-    // 轮询任务状态
+    // Poll task status
     const pollStatus = async () => {
       try {
         const statusResponse = await axios.get(`/api/task_status/${taskId}`)
         const status = statusResponse.data.status
-        // 找到对应的review item，更新status
+        // Find matching review item and update status
         const item = reviewList.value.find(i => i.taskId === taskId)
         if (item) {
           if (status === 'Completed') {
@@ -687,12 +514,12 @@ async function onSubmit() {
     }
     pollStatus()
  
-    // 重置表单
+    // Reset form
     selectedReportingDate.value = ''
     selectedRunMode.value = ''
     actionComment.value = ''
    
-    // 重新获取resume config files列表，包含新生成的config file
+    // Refresh resume config files list including newly generated
     fetchResumeConfigFiles()
    
     // Set step2Complete to true to show 100% progress
@@ -787,119 +614,6 @@ async function downloadEclResults(index: number) {
   }
 }
  
-// Check if a record can generate report
-function canGenerateReport(item: ReviewItem): boolean {
-  if (item.status !== 'Completed') {
-    return false
-  }
-  
-  // Check if run mode ends with '5'
-  const runMode = item.runMode || ''
-  return runMode.endsWith('5')
-}
-
-// Generate Report from Record
-async function generateReportFromRecord(index: number) {
-  const item = reviewList.value[index]
-  if (!canGenerateReport(item)) {
-    alert('Only completed records with run mode ending in 5 can generate reports')
-    return
-  }
- 
-  try {
-    showProcessPopup.value = true
-    processPopupClosed.value = false
-   
-    // Generate UI timestamp (consistent with Parameter page)
-    const now = new Date()
-    const pad = (n: number) => n.toString().padStart(2, '0')
-    const uiTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
-   
-    await axios.post('/api/generate_report_from_record', {
-      record_id: item.id,  // 需要从数据库获取record的ID
-      maker: getUserDisplayName(),
-      ui_timestamp: uiTimestamp  // Send frontend timestamp to backend
-    })
-    
-    // 使用前端生成的时间戳
-    const frontendTimestamp = uiTimestamp
-    console.log('Generated report timestamp:', frontendTimestamp)
-   
-    // 刷新reporting records列表
-    fetchReportingRecords()
-   
-    // 关闭popup
-    showProcessPopup.value = false
-   
-  } catch (error: any) {
-    showProcessPopup.value = false
-    alert('Failed to start report generation: ' + (error.response?.data?.error || error.message))
-  }
-}
- 
-// Download reporting logs
-async function downloadReportingLogs(index: number) {
-  const item = reportingRecords.value[index]
- 
-  if (!item.task_id) {
-    alert('No task ID found for this record')
-    return
-  }
- 
-  try {
-    // Call the backend API to download log files
-    const response = await axios.get(`/api/download_reporting_logs/${item.task_id}`, {
-      responseType: 'blob'
-    })
-   
-    // Create download link
-    const blob = new Blob([response.data], { type: 'application/zip' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `reporting_logs_${item.original_timestamp || 'unknown'}.zip`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-   
-    console.log(`Successfully downloaded reporting logs for task: ${item.task_id}`)
-   
-  } catch (error: any) {
-    console.error('Download failed:', error)
-    const errorMessage = error.response?.data?.error || 'Download failed. Please try again.'
-    alert(`Download failed: ${errorMessage}`)
-  }
-}
- 
-// Download reports and redirect to reporting page
-async function downloadReportingReports(index: number) {
-  const item = reportingRecords.value[index]
- 
-  if (item.status !== 'Completed') {
-    alert('Report is not ready yet')
-    return
-  }
- 
-  try {
-    // Call the backend API to get redirect information
-    const response = await axios.get(`/api/download_reporting_reports/${item.task_id}`)
-   
-    if (response.data.redirect) {
-      // Navigate to reporting page using Vue Router
-      router.push(response.data.url)
-    } else {
-      alert('No redirect information received')
-    }
-   
-  } catch (error: any) {
-    console.error('Download reports failed:', error)
-    const errorMessage = error.response?.data?.error || 'Download reports failed. Please try again.'
-    alert(`Download reports failed: ${errorMessage}`)
-  }
-}
- 
- 
 const fetchReviewListFromDB = async () => {
   try {
     const res = await axios.get('/api/get_eclengine_records')
@@ -907,7 +621,7 @@ const fetchReviewListFromDB = async () => {
       let settings: any = {}
       try { settings = JSON.parse(item.settings) } catch {}
       return {
-        id: item.id, // 添加record ID
+        id: item.id,
         maker: item.maker,
         time: item.time,
         reportingDate: settings.reportingDate || '',
@@ -916,31 +630,17 @@ const fetchReviewListFromDB = async () => {
         status: item.status,
         checker: item.checker,
         approved: false,
+        selected: false,
         downloaded: false,
-        eclResultsDownloaded: false, // Initialize ECL results download status
+        eclResultsDownloaded: false,
         taskId: settings.task_id || '',
         timestamp: settings.timestamp || '',
         isResume: settings.isResume || false,
-        resumedVersion: settings.resumedVersion || '',
-        isGenerateReport: settings.isGenerateReport || false // Add this line
+        resumedVersion: settings.resumedVersion || ''
       }
     })
   } catch (e) {
     console.error('Error fetching ECL engine records:', e)
-  }
-}
- 
-// Fetch reporting records from database
-const fetchReportingRecords = async () => {
-  try {
-    const response = await axios.get('/api/get_reporting_records')
-    // Initialize selected property for each record
-    reportingRecords.value = response.data.records.map((record: any) => ({
-      ...record,
-      selected: false
-    }))
-  } catch (error) {
-    console.error('Error fetching reporting records:', error)
   }
 }
  
@@ -987,10 +687,10 @@ async function onResumeSubmit() {
     })
  
     const taskId = resumeResponse.data.task_id
-    const backendTimestamp = resumeResponse.data.timestamp || uiTimestamp
- 
+const backendTimestamp = resumeResponse.data.timestamp || uiTimestamp
+
     reviewList.value.unshift({
-      id: 0, // 临时ID，实际ID会在数据库保存后更新
+      id: 0, // Temporary ID, will be updated after DB save
       maker: getUserDisplayName(),
       time: timeStr,
       reportingDate: '', // Resume run doesn't have reporting date
@@ -1041,7 +741,7 @@ async function onResumeSubmit() {
     resumeActionComment.value = ''
     step3Complete.value = true
    
-    // 重新获取resume config files列表
+    // Refresh resume config files list
     fetchResumeConfigFiles()
    
     // Reset progress bar after a delay

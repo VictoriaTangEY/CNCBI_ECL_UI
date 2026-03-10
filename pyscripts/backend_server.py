@@ -66,21 +66,45 @@ CONFIG_FILE_PATH = os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG['config_templ
 
 # ==============================================================================
 # 3. REPORTING
-REPORT_FILES = {
-    'ecl_monthly': 'reporting_ecl_result_to_rmg.xlsx',     
-    'ecl_summary': 'reporting_ecl_result_summary.xlsx',    
-    'bu_excel': [                                           
-        'ecl_result_by_BU_PBG-BB.xlsx',
-        'ecl_result_by_BU_PBG-NON-BB.xlsx',
-        'ecl_result_by_BU_TMG.xlsx',
-        'ecl_result_by_BU_WBG.xlsx'
-    ],
-    'hkma': 'reporting_ecl_hkma.xlsx',
-    'audit_trial': 'reporting_ecl_audit_trial.xlsx',
-    'gl_posting': [
-        'reporting_ecl_gl_posting.xlsx',
-        'Template_GL Posting_Manual Adj.xlsx'
-    ]
+REPORT_GROUP_PATTERNS = {
+    'ecl_monthly': {
+        'type': 'exact',
+        'files': ['reporting_ecl_result_to_rmg.xlsx'],
+        'zip_name': 'ECL_Monthly_Report.zip',
+    },
+    'ecl_summary': {
+        'type': 'exact',
+        'files': ['reporting_ecl_result_summary.xlsx'],
+        'zip_name': 'ECL_Summary_Report.zip',
+    },
+    'ecl_gl_posting': {
+        'type': 'exact',
+        'files': ['GL_Posting_Report.xlsx'],
+        'zip_name': 'GL_Posting_Report.zip',
+    },
+    'ecl_bu': {
+        'type': 'prefix',
+        'prefixes': ['ECL_OFF_BAL', 'ECL_ON_BAL'],
+        'zip_name': 'BU_Excel_Reports.zip',
+    },
+    'ecl_hkma': {
+        'type': 'prefix',
+        'prefixes': ['MA(BS)1C', 'Survey on ECL Provision Template'],
+        'zip_name': 'HKMA_Reports.zip',
+    },
+    'ecl_movement': {
+        'type': 'prefix',
+        'prefixes': ['ECL Explanation Template', 'top 10'],
+        'zip_name': 'ECL_Movement_Reports.zip',
+    },
+    'ecl_annual_disclosure': {
+        'type': 'prefix',
+        'prefixes': [
+            'Note 17(a), (c), 37a(iii) Loan & advances and other accounts',
+            'CNCB Loan & advances and other accounts',
+        ],
+        'zip_name': 'ECL_Annual_Disclosure_Reports.zip',
+    },
 }
 
 # ==============================================================================
@@ -283,11 +307,9 @@ def monitor_futures():
                             if task_status[task_id].get('is_prerun_validation'):
                                 # Update pre-run validation status
                                 update_prerun_validation_status(task_id, result.get('status', 'unknown'))
-                                logger.info(f"Updated pre-run validation status for task {task_id} to {result.get('status', 'unknown')}")
                             elif task_status[task_id].get('is_generate_report'):
                                 # Update reporting status
                                 update_reporting_status_in_db(task_id, result.get('status', 'unknown'))
-                                logger.info(f"Updated reporting status for task {task_id} to {result.get('status', 'unknown')}")
                             else:
                                 # Update regular ECL engine status
                                 update_eclengine_status_in_db(task_id, result.get('status', 'unknown'))
@@ -572,7 +594,157 @@ def create_ui_eclengine_table():
     except Exception as e:
         logger.error(f"Error creating UI_eclengine_records table: {str(e)}")
         return False
- 
+
+def get_eclengine_record_by_id(record_id):
+    """Get ECL engine record by ID"""
+    try:
+        create_ui_eclengine_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, maker, time, settings, action, status, checker, created_at
+            FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            WHERE id = ?
+        """, (record_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            settings_dict = {}
+            try:
+                settings_dict = json.loads(row[3]) if row[3] else {}
+            except:
+                pass
+            return {
+                'id': row[0],
+                'maker': row[1],
+                'time': row[2].strftime('%Y-%m-%d %H:%M:%S') if row[2] else '',
+                'settings': settings_dict,
+                'action': row[4],
+                'status': row[5],
+                'checker': row[6],
+                'created_at': row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else ''
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Error getting ECL engine record by ID: {str(e)}")
+        return None
+
+def save_eclengine_record(maker, time, settings, action, status, checker):
+    """Save run management record to database"""
+    try:
+        create_ui_eclengine_table()
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            INSERT INTO [{DB_NAME}].[dbo].[UI_eclengine_records]
+            (maker, time, settings, action, status, checker)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (maker, time, settings, action, status, checker))
+        conn.close()
+        logger.info(f"Successfully saved ECL engine record: {action}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving ECL engine record: {str(e)}")
+        return False
+
+def get_eclengine_records():
+    """Get all run management records from database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, maker, time, settings, action, status, checker, created_at
+            FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+            ORDER BY time DESC
+        """)
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'maker': row[1],
+                'time': row[2].strftime('%Y-%m-%d %H:%M:%S') if row[2] else '',
+                'settings': row[3] or '',
+                'action': row[4],
+                'status': row[5],
+                'checker': row[6] or 'Waiting',
+                'created_at': row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else ''
+            })
+        conn.close()
+        return records
+    except Exception as e:
+        logger.error(f"Error getting ECL engine records: {str(e)}")
+        return []
+
+def update_eclengine_status_in_db(task_id, status):
+    """
+    Update the status of a task in the UI_eclengine_records table by task_id (in settings JSON).
+    """
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            UPDATE [{DB_NAME}].[dbo].[UI_eclengine_records]
+            SET status = ?
+            WHERE settings IS NOT NULL
+            AND ISJSON(settings) = 1
+            AND JSON_VALUE(settings, '$.task_id') = ?
+        """, (status, task_id))
+        
+        rows_affected = cursor.rowcount
+        conn.close()
+       
+    except Exception as e:
+        logger.error(f"Error updating ECL engine status in DB for {task_id}: {str(e)}")
+
+def update_reporting_status_in_db(task_id, status):
+    """
+    Update the status of a task in the UI_reporting_records table by task_id.
+    """
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        if status == 'Completed':
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+                SET status = ?, completed_at = GETDATE()
+                WHERE task_id = ?
+            """, (status, task_id))
+        else:
+            cursor.execute(f"""
+                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+                SET status = ?
+                WHERE task_id = ?
+            """, (status, task_id))
+    
+    except Exception as e:
+        logger.error(f"Error updating reporting status for task {task_id}: {str(e)}")
+        # Log additional debugging information
+        try:
+            # Try to get the problematic record for debugging
+            conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                SELECT id, settings, status
+                FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+                WHERE settings IS NOT NULL
+                AND (ISJSON(settings) = 0 OR JSON_VALUE(settings, '$.task_id') = ?)
+            """, (task_id,))
+            debug_rows = cursor.fetchall()
+            conn.close()
+            
+            if debug_rows:
+                logger.error(f"Debug info - Found {len(debug_rows)} potentially problematic records:")
+                for row in debug_rows:
+                    logger.error(f"  ID: {row[0]}, Status: {row[2]}, Settings: {row[1]}")
+            else:
+                logger.error(f"Debug info - No records found with task_id {task_id}")
+        
+        except Exception as debug_e:
+            logger.error(f"Error during debug query: {str(debug_e)}")
+
+# ==============================================================================
+# 4. REPORTING
 def create_reporting_records_table():
     """Create the UI_reporting_records table if it doesn't exist"""
     try:
@@ -724,165 +896,8 @@ def get_reporting_record(task_id):
         logger.error(f"Error getting reporting record: {str(e)}")
         return None
 
-def get_eclengine_record_by_id(record_id):
-    """Get ECL engine record by ID"""
-    try:
-        create_ui_eclengine_table()
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT id, maker, time, settings, action, status, checker, created_at
-            FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-            WHERE id = ?
-        """, (record_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            settings_dict = {}
-            try:
-                settings_dict = json.loads(row[3]) if row[3] else {}
-            except:
-                pass
-            return {
-                'id': row[0],
-                'maker': row[1],
-                'time': row[2].strftime('%Y-%m-%d %H:%M:%S') if row[2] else '',
-                'settings': settings_dict,
-                'action': row[4],
-                'status': row[5],
-                'checker': row[6],
-                'created_at': row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else ''
-            }
-        return None
-    except Exception as e:
-        logger.error(f"Error getting ECL engine record by ID: {str(e)}")
-        return None
-
-def save_eclengine_record(maker, time, settings, action, status, checker):
-    """Save run management record to database"""
-    try:
-        create_ui_eclengine_table()
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            INSERT INTO [{DB_NAME}].[dbo].[UI_eclengine_records]
-            (maker, time, settings, action, status, checker)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (maker, time, settings, action, status, checker))
-        conn.close()
-        logger.info(f"Successfully saved ECL engine record: {action}")
-        return True
-    except Exception as e:
-        logger.error(f"Error saving ECL engine record: {str(e)}")
-        return False
-
-def get_eclengine_records():
-    """Get all run management records from database"""
-    try:
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT id, maker, time, settings, action, status, checker, created_at
-            FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-            ORDER BY time DESC
-        """)
-        records = []
-        for row in cursor.fetchall():
-            records.append({
-                'id': row[0],
-                'maker': row[1],
-                'time': row[2].strftime('%Y-%m-%d %H:%M:%S') if row[2] else '',
-                'settings': row[3] or '',
-                'action': row[4],
-                'status': row[5],
-                'checker': row[6] or 'Waiting',
-                'created_at': row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else ''
-            })
-        conn.close()
-        return records
-    except Exception as e:
-        logger.error(f"Error getting ECL engine records: {str(e)}")
-        return []
-
-def update_eclengine_status_in_db(task_id, status):
-    """
-    Update the status of a task in the UI_eclengine_records table by task_id (in settings JSON).
-    """
-    try:
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            UPDATE [{DB_NAME}].[dbo].[UI_eclengine_records]
-            SET status = ?
-            WHERE settings IS NOT NULL
-            AND ISJSON(settings) = 1
-            AND JSON_VALUE(settings, '$.task_id') = ?
-        """, (status, task_id))
-        
-        rows_affected = cursor.rowcount
-        conn.close()
-       
-    except Exception as e:
-        logger.error(f"Error updating ECL engine status in DB for {task_id}: {str(e)}")
-
-def update_reporting_status_in_db(task_id, status):
-    """
-    Update the status of a task in the UI_reporting_records table by task_id.
-    """
-    try:
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        if status == 'Completed':
-            cursor.execute(f"""
-                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
-                SET status = ?, completed_at = GETDATE()
-                WHERE task_id = ?
-            """, (status, task_id))
-        else:
-            cursor.execute(f"""
-                UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
-                SET status = ?
-                WHERE task_id = ?
-            """, (status, task_id))
-        
-        # Check if any rows were affected
-        rows_affected = cursor.rowcount
-        conn.close()
-        
-        if rows_affected > 0:
-            logger.info(f"Updated reporting status for task {task_id} to {status} ({rows_affected} row(s) affected)")
-        else:
-            logger.warning(f"No rows updated for reporting task {task_id}.")
-    
-    except Exception as e:
-        logger.error(f"Error updating reporting status for task {task_id}: {str(e)}")
-        # Log additional debugging information
-        try:
-            # Try to get the problematic record for debugging
-            conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-            cursor = conn.cursor()
-            cursor.execute(f"""
-                SELECT id, settings, status
-                FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-                WHERE settings IS NOT NULL
-                AND (ISJSON(settings) = 0 OR JSON_VALUE(settings, '$.task_id') = ?)
-            """, (task_id,))
-            debug_rows = cursor.fetchall()
-            conn.close()
-            
-            if debug_rows:
-                logger.error(f"Debug info - Found {len(debug_rows)} potentially problematic records:")
-                for row in debug_rows:
-                    logger.error(f"  ID: {row[0]}, Status: {row[2]}, Settings: {row[1]}")
-            else:
-                logger.error(f"Debug info - No records found with task_id {task_id}")
-        
-        except Exception as debug_e:
-            logger.error(f"Error during debug query: {str(debug_e)}")
- 
 # ==============================================================================
-# 4. ROLE MANAGEMENT
+# 5. ROLE MANAGEMENT
 def create_ui_user_maintenance_table():
     """Create the UI_user_maintenance table if it doesn't exist"""
     try:
@@ -1488,8 +1503,9 @@ Configuration Categories:
 2. Pre-run Validation        - 
 3. Run Management            -  
 4. Reporting                 -  
-5. Role Management           -  
-6. Audit Trail               -  
+5. Reporting Download        -  
+6. Role Management           -  
+7. Audit Trail               -  
 """
 # ==============================================================================
 # 1. PARAMETER
@@ -2490,87 +2506,6 @@ def generate_resume_config_file(config_filename: str, resume_run_mode: str, ui_t
         logger.error(f"Error generating resume config file: {str(e)}")
         return {'status': 'Failed', 'error': str(e)}
 
-def generate_report_config_file_from_record(record_id, ui_timestamp):
-    """
-    Automatically generate report config file from review record
-    Inherits all previously modified functions: timestamp consistency and data isolation
-    """
-    try:
-        # 1. Get original record information
-        original_record = get_eclengine_record_by_id(record_id)
-        if not original_record:
-            return {'status': 'Failed', 'error': 'Original record not found'}
-        
-        # Ensure settings is a dict
-        settings = original_record.get('settings', {}) or {}
-        if isinstance(settings, str):
-            try:
-                settings = json.loads(settings)
-            except Exception:
-                logger.error(f"Failed to parse settings JSON for record {record_id}")
-                settings = {}
-        
-        # 2. Get original timestamp from settings
-        original_timestamp = settings.get('timestamp', '')
-        if not original_timestamp:
-            return {'status': 'Failed', 'error': 'Original timestamp not found in record settings'}
-        
-        original_config_filename = f"run_config_file_{original_timestamp}.json"
-        
-        # Get the base output path from config BEFORE generating new config
-        base_output_path = None
-        try:
-            import json
-            with open(CONFIG_FILE_PATH, 'r') as f:
-                config = json.load(f)
-            base_output_path = config['RUN_SETTING']['OUTPUT_PATH']
-        except Exception as e:
-            logger.error(f"Failed to read config file for base output path: {str(e)}")
-            return {'status': 'Failed', 'error': f'Failed to read config file: {str(e)}'}
-        
-        # 3. Determine reporting date for this record
-        # Always derive reporting date from the record itself, not from the template
-        reporting_date = settings.get('reportingDate') or settings.get('reporting_date')
-        
-        # Fallback: try to derive reporting date from original_timestamp
-        # original_timestamp format: Adhoc_Run_YYYYMMDD_YYYYMMDDHHMMSS
-        if not reporting_date and original_timestamp:
-            parts = original_timestamp.split('_')
-            # Expect at least: ['Adhoc', 'Run', 'YYYYMMDD', 'YYYYMMDDHHMMSS']
-            if len(parts) >= 3 and len(parts[2]) == 8 and parts[2].isdigit():
-                date_str = parts[2]  # YYYYMMDD
-                reporting_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
-        
-        if not reporting_date:
-            logger.error(f"Reporting date not found for record {record_id}. Settings: {settings}")
-            return {'status': 'Failed', 'error': 'Reporting date not found in original record settings'}
-        
-        # 4. Use our modified function to ensure all functionality is preserved
-        #    Here reporting_date is guaranteed to come from the record/its timestamp,
-        #    so DATA_YYMM will not be affected by manual edits to the template config.
-        config_result = generate_new_config_file(
-            reporting_date=reporting_date,
-            run_mode='6',  # Fixed to 6
-            ui_timestamp=ui_timestamp  # Use UI timestamp to ensure consistency
-        )
-        
-        if config_result['status'] == 'Failed':
-            return config_result
-        
-        # 5. Copy original ECL run data to new report folder
-        new_timestamp = config_result.get('timestamp', ui_timestamp)
-        copy_result = copy_original_data_only(original_timestamp, new_timestamp, base_output_path)
-        if copy_result['status'] == 'Failed':
-            logger.error(f"Failed to copy original data for report generation: {copy_result['error']}")
-            return {'status': 'Failed', 'error': f'Failed to copy original data: {copy_result["error"]}'}
-        
-        logger.info(f"Successfully copied original ECL run data to new report folder")
-        return config_result
-    
-    except Exception as e:
-        logger.error(f"Error generating report config from record: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
-
 # Run Management: Select Parameters and Data Correction
 @app.route('/get_uploaded_files', methods=['GET'])
 def get_uploaded_files():
@@ -2586,19 +2521,6 @@ def get_uploaded_files():
             files = [d for d in all_dirs if d.startswith('adj_')]
         elif file_type == 'resume_config':
             # Get all config files from ECL_Engine directory
-            config_files = []
-            if os.path.exists(BASE_ECL_ENGINE):
-                for file_name in os.listdir(BASE_ECL_ENGINE):
-                    if file_name.startswith('run_config_file_') and file_name.endswith('.json'):
-                        config_files.append(file_name)
-            # Sort files by timestamp (newest first)
-            config_files.sort(reverse=True)
-            return jsonify({
-                'files': config_files,
-                'base_path': BASE_ECL_ENGINE
-            }), 200
-        elif file_type == 'report_config':
-            # Get all config files from ECL_Engine directory (same as resume_config)
             config_files = []
             if os.path.exists(BASE_ECL_ENGINE):
                 for file_name in os.listdir(BASE_ECL_ENGINE):
@@ -2803,121 +2725,6 @@ def resume_ecl_engine():
             'traceback': error_details
         }), 500
 
-# Generate Report from Record
-@app.route('/generate_report_from_record', methods=['POST'])
-def generate_report_from_record():
-    """New API to generate report from review record"""
-    try:
-        data = request.get_json()
-        record_id = data.get('record_id')
-        ui_timestamp = data.get('ui_timestamp', '')
-        maker = data.get('maker', 'Unknown User')
-        
-        if not record_id:
-            return jsonify({'error': 'Record ID is required'}), 400
-        
-        # Use frontend timestamp if provided, otherwise generate one (consistent with Parameter page)
-        if ui_timestamp:
-            timestamp = ui_timestamp
-        else:
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        
-        # Get original record information
-        original_record = get_eclengine_record_by_id(record_id)
-        if not original_record:
-            return jsonify({'error': 'Original record not found'}), 404
-        
-        if original_record['status'] != 'Completed':
-            return jsonify({'error': 'Only completed records can generate reports'}), 400
-        
-        # Check if run mode ends with '5'
-        run_mode = original_record['settings'].get('runMode', '')
-        if not run_mode.endswith('5'):
-            return jsonify({'error': 'Only records with run mode ending in 5 can generate reports'}), 400
-        
-        # Generate report config file
-        # IMPORTANT:
-        # - The report run's DATA_YYMM / run_yymm must be derived from the
-        #   original record itself (DB settings / original timestamp),
-        #   NOT from the mutable template run_config_file.json.
-        # - This avoids issues where someone manually edits the template's
-        #   RUN_YYMM and causes Generate Report to pick up the wrong date.
-        config_result = generate_report_config_file_from_record(record_id, timestamp)
-        if config_result['status'] == 'Failed':
-            return jsonify({'error': f'Failed to generate report config: {config_result["error"]}'}), 500
-        
-        # Generate task ID
-        task_id = str(uuid.uuid4())
-        new_timestamp = config_result.get('timestamp', '')
-        new_config_path = config_result.get('config_path', '')
-        
-        # Build settings
-        original_timestamp = original_record['settings'].get('timestamp', '')
-        reporting_date = original_record['settings'].get('reportingDate', '')
-        settings = json.dumps({
-            "task_id": task_id,
-            "timestamp": new_timestamp,
-            "reportingDate": reporting_date,
-            "runMode": "6",
-            "original_timestamp": original_timestamp
-        })
-        
-        # Build action with formatted timestamp
-        formatted_timestamp = format_timestamp_for_display(original_timestamp)
-        action = f"Generate report for ECL Run at {formatted_timestamp}"
-        
-        # Save to reporting records table
-        now_dt = datetime.now()
-        save_reporting_record(
-            task_id=task_id,
-            maker=maker,
-            time=now_dt,
-            settings=settings,
-            action=action,
-            status='Running',
-            checker=maker,
-            original_timestamp=original_timestamp
-        )
-        
-        # Prepare command
-        command = f'{ECL_ENGINE_CONFIG["python_executable"]} {os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG["main_script"])} --configPath {new_config_path}'
-        logger.info(f"Executing report generation command: {command}")
-        logger.info(f"Using config file: {new_config_path}")
-        logger.info(f"Output will be saved to timestamp folder: {new_timestamp}")
-        
-        # Initialize task status
-        task_status[task_id] = {
-            'status': 'Running',
-            'data': data,
-            'copied_files': [],
-            'config_file': new_config_path,
-            'timestamp': new_timestamp,
-            'created_at': datetime.now().isoformat(),
-            'command': command,
-            'is_generate_report': True
-        }
-        
-        with future_lock:
-            future = executor.submit(process_ecl_task, command, data)
-            future_to_task_id[future] = task_id
-        
-        return jsonify({
-            'task_id': task_id,
-            'status': 'pending',
-            'timestamp': timestamp,
-            'config_file': new_config_path
-        }), 202
-    
-    except Exception as e:
-        logger.error(f"Error generating report from record: {str(e)}")
-        import traceback
-        error_details = traceback.format_exc()
-        logger.error(f"Full error traceback: {error_details}")
-        return jsonify({
-            'error': str(e),
-            'traceback': error_details
-        }), 500
-
 # Run Management: Get review records from DB
 @app.route('/get_eclengine_records', methods=['GET'])
 def api_get_eclengine_records():
@@ -2926,84 +2733,6 @@ def api_get_eclengine_records():
         return jsonify({'records': records, 'count': len(records)}), 200
     except Exception as e:
         return jsonify({'error': f'Error getting ECL engine records: {str(e)}'}), 500
- 
-# Get Reporting Records
-@app.route('/get_reporting_records', methods=['GET'])
-def api_get_reporting_records():
-    """Get reporting records list"""
-    try:
-        records = get_reporting_records()
-        return jsonify({'records': records}), 200
-    except Exception as e:
-        logger.error(f"Error getting reporting records: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# Get Reporting Dates from batch_status.log
-@app.route('/get_reporting_dates', methods=['GET'])
-def api_get_reporting_dates():
-    try:
-        status_file = os.path.join(BASE_ECL_ENGINE, 'batch_status.log')
-        if not os.path.exists(status_file):
-            logger.warning(f"Status file not found: {status_file}")
-            return jsonify({'dates': []}), 200
-
-        today = datetime.now().date()
-        dates_set = set()
-
-        with open(status_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-
-                parts = line.split(':', 1)
-                if not parts:
-                    continue
-
-                date_str = parts[0].strip()
-                try:
-                    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except ValueError:
-                    logger.warning(f"Invalid date format in batch_status.log: {date_str}")
-                    continue
-
-                if date_obj <= today:
-                    dates_set.add(date_str)
-
-        dates = sorted(dates_set, reverse=True)
-        return jsonify({'dates': dates}), 200
-    except Exception as e:
-        logger.error(f"Error getting reporting dates: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# Reporting Status Check
-@app.route('/reporting_status/<task_id>', methods=['GET'])
-def get_reporting_status(task_id):
-    """Get reporting task status"""
-    try:
-        # First check status in memory
-        if task_id in task_status:
-            memory_status = task_status[task_id]
-            return jsonify({
-                'status': memory_status['status'],
-                'timestamp': memory_status.get('timestamp', ''),
-                'config_file': memory_status.get('config_file', '')
-            })
-        
-        # If not in memory, check database
-        record = get_reporting_record(task_id)
-        if record:
-            return jsonify({
-                'status': record['status'],
-                'timestamp': record['timestamp'],
-                'config_file': f"run_config_file_{record['timestamp']}.json"
-            })
-        
-        return jsonify({'error': 'Task not found'}), 404
-    
-    except Exception as e:
-        logger.error(f"Error getting reporting status: {str(e)}")
-        return jsonify({'error': str(e)}), 500
 
 # Task Status Check
 @app.route('/task_status/<task_id>', methods=['GET'])
@@ -3053,76 +2782,64 @@ def api_save_eclengine_record():
     except Exception as e:
         return jsonify({'error': f'Error saving ECL engine record: {str(e)}'}), 500
 
-# Confirm Reporting Record
-@app.route('/confirm_reporting_record', methods=['POST'])
-def confirm_reporting_record():
-    """Confirm a reporting record - update status to Confirmed and set checker"""
+# Confirm Run Record
+@app.route('/confirm_run_record', methods=['POST'])
+def confirm_run_record():
+    """Confirm run record(s) - update status to Confirmed and set checker for selected ECL engine records"""
     try:
         data = request.get_json()
-        task_id = data.get('task_id')
+        record_ids = data.get('record_ids')  # list of record id (database id)
         checker = data.get('checker')
-        
-        if not task_id or not checker:
-            return jsonify({'error': 'Missing required fields: task_id and checker'}), 400
-        
-        # Update the reporting record status and checker
+        if not record_ids or not checker:
+            return jsonify({'error': 'Missing required fields: record_ids and checker'}), 400
+        if not isinstance(record_ids, list):
+            record_ids = [record_ids]
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
-        
+        placeholders = ','.join('?' * len(record_ids))
         cursor.execute(f"""
-            UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+            UPDATE [{DB_NAME}].[dbo].[UI_eclengine_records]
             SET status = 'Confirmed', checker = ?
-            WHERE task_id = ?
-        """, (checker, task_id))
-        
+            WHERE id IN ({placeholders}) AND status = 'Completed'
+        """, [checker] + record_ids)
         rows_affected = cursor.rowcount
         conn.close()
-        
         if rows_affected > 0:
-            logger.info(f"Confirmed reporting record {task_id} with checker {checker}")
-            return jsonify({'message': 'Reporting record confirmed successfully'}), 200
-        else:
-            logger.warning(f"No reporting record found with task_id {task_id}")
-            return jsonify({'error': 'Reporting record not found'}), 404
-    
+            logger.info(f"Confirmed run record(s) {record_ids} with checker {checker}")
+            return jsonify({'message': 'Run record(s) confirmed successfully'}), 200
+        return jsonify({'error': 'No Completed records found with given ids'}), 404
     except Exception as e:
-        logger.error(f"Error confirming reporting record: {str(e)}")
+        logger.error(f"Error confirming run record: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# Unconfirm Reporting Record
-@app.route('/unconfirm_reporting_record', methods=['POST'])
-def unconfirm_reporting_record():
-    """Unconfirm a reporting record - update status from Confirmed back to Completed"""
+# Unconfirm Run Record (ECL engine record: status Confirmed -> Completed)
+@app.route('/unconfirm_run_record', methods=['POST'])
+def unconfirm_run_record():
+    """Unconfirm run record(s) - update status from Confirmed back to Completed"""
     try:
         data = request.get_json()
-        task_id = data.get('task_id')
+        record_ids = data.get('record_ids')
         checker = data.get('checker')
-        
-        if not task_id or not checker:
-            return jsonify({'error': 'Missing required fields: task_id and checker'}), 400
-        
-        # Update the reporting record status back to Completed
+        if not record_ids or not checker:
+            return jsonify({'error': 'Missing required fields: record_ids and checker'}), 400
+        if not isinstance(record_ids, list):
+            record_ids = [record_ids]
         conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
         cursor = conn.cursor()
-        
+        placeholders = ','.join('?' * len(record_ids))
         cursor.execute(f"""
-            UPDATE [{DB_NAME}].[dbo].[UI_reporting_records]
+            UPDATE [{DB_NAME}].[dbo].[UI_eclengine_records]
             SET status = 'Completed', checker = ?
-            WHERE task_id = ? AND status = 'Confirmed'
-        """, (checker, task_id))
-        
+            WHERE id IN ({placeholders}) AND status = 'Confirmed'
+        """, [checker] + record_ids)
         rows_affected = cursor.rowcount
         conn.close()
-        
         if rows_affected > 0:
-            logger.info(f"Unconfirmed reporting record {task_id} with checker {checker}")
-            return jsonify({'message': 'Reporting record unconfirmed successfully'}), 200
-        else:
-            logger.warning(f"No confirmed reporting record found with task_id {task_id}")
-            return jsonify({'error': 'Confirmed reporting record not found'}), 404
-    
+            logger.info(f"Unconfirmed run record(s) {record_ids} with checker {checker}")
+            return jsonify({'message': 'Run record(s) unconfirmed successfully'}), 200
+        return jsonify({'error': 'No Confirmed records found with given ids'}), 404
     except Exception as e:
-        logger.error(f"Error unconfirming reporting record: {str(e)}")
+        logger.error(f"Error unconfirming run record: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Run Management: Download log files for a specific record
@@ -3268,6 +2985,281 @@ def download_ecl_results(task_id):
         logger.error(f"Error downloading ECL results for task {task_id}: {str(e)}")
         return jsonify({'error': f'Error downloading ECL results: {str(e)}'}), 500
 
+# ==============================================================================
+# 4. REPORTING
+@app.route('/generate_dual_report_from_records', methods=['POST'])
+def generate_dual_report_from_records():
+    """
+    Generate reporting run from two confirmed ECL engine records with different reporting dates.
+    """
+    try:
+        data = request.get_json()
+        record_ids = data.get('record_ids', [])
+        ui_timestamp = data.get('ui_timestamp', '')
+        maker = data.get('maker', 'Unknown User')
+
+        if not isinstance(record_ids, list) or len(record_ids) != 2:
+            return jsonify({'error': 'Exactly two record_ids are required'}), 400
+
+        if not ui_timestamp:
+            ui_timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+
+        # Load base output path from template config (without timestamp suffix)
+        try:
+            with open(CONFIG_FILE_PATH, 'r') as f:
+                base_config = json.load(f)
+            base_output_path = base_config['RUN_SETTING']['OUTPUT_PATH']
+        except Exception as e:
+            logger.error(f"Failed to read base config for dual report: {str(e)}")
+            return jsonify({'error': f'Failed to read config file: {str(e)}'}), 500
+
+        records = []
+        for rid in record_ids:
+            record = get_eclengine_record_by_id(rid)
+            if not record:
+                return jsonify({'error': f'Original record not found for id {rid}'}), 404
+            if record.get('status') != 'Confirmed':
+                return jsonify({'error': 'Only confirmed records can be used to generate dual reports'}), 400
+
+            settings = record.get('settings', {}) or {}
+            if isinstance(settings, str):
+                try:
+                    settings = json.loads(settings)
+                except Exception:
+                    settings = {}
+
+            reporting_date = settings.get('reportingDate')
+            if not reporting_date:
+                return jsonify({'error': f'Reporting date not found in record {rid} settings'}), 400
+
+            original_timestamp = settings.get('timestamp')
+            if not original_timestamp:
+                return jsonify({'error': f'Original timestamp not found in record {rid} settings'}), 400
+
+            records.append({
+                'id': rid,
+                'record': record,
+                'settings': settings,
+                'reporting_date': reporting_date,
+                'original_timestamp': original_timestamp,
+            })
+
+        # Ensure reporting dates are different
+        rd1 = records[0]['reporting_date']
+        rd2 = records[1]['reporting_date']
+        if rd1 == rd2:
+            return jsonify({'error': 'Two records must have different reporting dates'}), 400
+
+        # Determine CURR_YYMM and PREV_YYMM
+        try:
+            d1 = datetime.strptime(rd1, '%Y-%m-%d').date()
+            d2 = datetime.strptime(rd2, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Reporting date must be in YYYY-MM-DD format'}), 400
+
+        if d1 > d2:
+            current_rec, previous_rec = records[0], records[1]
+        else:
+            current_rec, previous_rec = records[1], records[0]
+
+        current_reporting_date = current_rec['reporting_date']
+        previous_reporting_date = previous_rec['reporting_date']
+
+        # Generate new config file using current reporting date and run_mode=6
+        config_result = generate_new_config_file(
+            reporting_date=current_reporting_date,
+            run_mode='6',
+            ui_timestamp=ui_timestamp
+        )
+        if config_result.get('status') == 'Failed':
+            error_msg = config_result.get('error', 'unknown error')
+            return jsonify({'error': f'Failed to generate report config: {error_msg}'}), 500
+
+        new_timestamp = config_result.get('timestamp', ui_timestamp)
+        new_config_path = config_result.get('config_path')
+
+        # Copy original data for both runs into the new timestamp folder
+        copy_current = copy_original_data_only(current_rec['original_timestamp'], new_timestamp, base_output_path)
+        if copy_current.get('status') == 'Failed':
+            current_error = copy_current.get('error', 'unknown error')
+            logger.error(f"Failed to copy current data for dual report: {current_error}")
+            return jsonify({'error': f'Failed to copy current data: {current_error}'}), 500
+
+        copy_previous = copy_original_data_only(previous_rec['original_timestamp'], new_timestamp, base_output_path)
+        if copy_previous.get('status') == 'Failed':
+            previous_error = copy_previous.get('error', 'unknown error')
+            logger.error(f"Failed to copy previous data for dual report: {previous_error}")
+            return jsonify({'error': f'Failed to copy previous data: {previous_error}'}), 500
+
+        current_base_path = copy_current.get('copied_path')
+        previous_base_path = copy_previous.get('copied_path')
+        if not current_base_path or not previous_base_path:
+            return jsonify({'error': 'Copied paths for current or previous run are missing'}), 500
+
+        current_result_path = os.path.join(current_base_path, '02_interim', 'interim_output_ecl_by_deal.csv')
+        previous_result_path = os.path.join(previous_base_path, '02_interim', 'interim_output_ecl_by_deal.csv')
+
+        # Inject CURRENT_RESULT_PATH and PREV_RESULT_PATH into the new config file
+        try:
+            with open(new_config_path, 'r') as f:
+                config = json.load(f)
+            run_setting = config.setdefault('RUN_SETTING', {})
+            run_setting['CURRENT_RESULT_PATH'] = current_result_path
+            run_setting['PREV_RESULT_PATH'] = previous_result_path
+            with open(new_config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to update result paths in dual report config: {str(e)}")
+            return jsonify({'error': f'Failed to update config file with result paths: {str(e)}'}), 500
+
+        # Create reporting record
+        task_id = str(uuid.uuid4())
+        settings = json.dumps({
+            "task_id": task_id,
+            "timestamp": new_timestamp,
+            "current_reporting_date": current_reporting_date,
+            "previous_reporting_date": previous_reporting_date,
+            "current_record": {
+                "id": current_rec['id'],
+                "reportingDate": current_reporting_date,
+                "timestamp": current_rec['original_timestamp']
+            },
+            "previous_record": {
+                "id": previous_rec['id'],
+                "reportingDate": previous_reporting_date,
+                "timestamp": previous_rec['original_timestamp']
+            }
+        })
+
+        action = f"Generate report for {previous_reporting_date} and {current_reporting_date}"
+        now_dt = datetime.now()
+        save_reporting_record(
+            task_id=task_id,
+            maker=maker,
+            time=now_dt,
+            settings=settings,
+            action=action,
+            status='Running',
+            checker=maker,
+            original_timestamp=current_rec['original_timestamp']
+        )
+
+        # Prepare and start reporting task
+        command = f'{ECL_ENGINE_CONFIG["python_executable"]} {os.path.join(BASE_ECL_ENGINE, ECL_ENGINE_CONFIG["main_script"])} --configPath {new_config_path}'
+        logger.info(f"Executing report generation command: {command}")
+        logger.info(f"Using config file: {new_config_path}")
+        logger.info(f"Output will be saved to timestamp folder: {new_timestamp}")
+
+        task_status[task_id] = {
+            'status': 'Running',
+            'data': data,
+            'copied_files': [],
+            'config_file': new_config_path,
+            'timestamp': new_timestamp,
+            'created_at': datetime.now().isoformat(),
+            'command': command,
+            'is_generate_report': True
+        }
+
+        with future_lock:
+            future = executor.submit(process_ecl_task, command, data)
+            future_to_task_id[future] = task_id
+
+        return jsonify({
+            'task_id': task_id,
+            'status': 'pending',
+            'timestamp': new_timestamp,
+            'config_file': new_config_path
+        }), 202
+
+    except Exception as e:
+        logger.error(f"Error generating report from records: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Full error traceback: {error_details}")
+        return jsonify({
+            'error': str(e),
+            'traceback': error_details
+        }), 500
+
+# Get Reporting Records
+@app.route('/get_reporting_records', methods=['GET'])
+def api_get_reporting_records():
+    """Get reporting records list"""
+    try:
+        records = get_reporting_records()
+        return jsonify({'records': records}), 200
+    except Exception as e:
+        logger.error(f"Error getting reporting records: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Get Reporting Dates from batch_status.log
+@app.route('/get_reporting_dates', methods=['GET'])
+def api_get_reporting_dates():
+    try:
+        status_file = os.path.join(BASE_ECL_ENGINE, 'batch_status.log')
+        if not os.path.exists(status_file):
+            logger.warning(f"Status file not found: {status_file}")
+            return jsonify({'dates': []}), 200
+
+        today = datetime.now().date()
+        dates_set = set()
+
+        with open(status_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                parts = line.split(':', 1)
+                if not parts:
+                    continue
+
+                date_str = parts[0].strip()
+                try:
+                    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    logger.warning(f"Invalid date format in batch_status.log: {date_str}")
+                    continue
+
+                if date_obj <= today:
+                    dates_set.add(date_str)
+
+        dates = sorted(dates_set, reverse=True)
+        return jsonify({'dates': dates}), 200
+    except Exception as e:
+        logger.error(f"Error getting reporting dates: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Reporting Status Check
+@app.route('/reporting_status/<task_id>', methods=['GET'])
+def get_reporting_status(task_id):
+    """Get reporting task status"""
+    try:
+        # First check status in memory
+        if task_id in task_status:
+            memory_status = task_status[task_id]
+            return jsonify({
+                'status': memory_status['status'],
+                'timestamp': memory_status.get('timestamp', ''),
+                'config_file': memory_status.get('config_file', '')
+            })
+        
+        # If not in memory, check database
+        record = get_reporting_record(task_id)
+        if record:
+            return jsonify({
+                'status': record['status'],
+                'timestamp': record['timestamp'],
+                'config_file': f"run_config_file_{record['timestamp']}.json"
+            })
+        
+        return jsonify({'error': 'Task not found'}), 404
+    
+    except Exception as e:
+        logger.error(f"Error getting reporting status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 # Download Reporting Logs
 @app.route('/download_reporting_logs/<task_id>', methods=['GET'])
 def download_reporting_logs(task_id):
@@ -3355,10 +3347,11 @@ def download_reporting_reports(task_id):
         
         # Use the generate report timestamp (new_timestamp) instead of original_timestamp
         report_timestamp = settings.get('timestamp', record.get('original_timestamp', ''))
-        
+
+        # Redirect to reporting page Download Reports tab
         return jsonify({
             'redirect': True,
-            'url': f'/reporting?timestamp={report_timestamp}&report_task_id={task_id}'
+            'url': f'/reporting?timestamp={report_timestamp}&report_task_id={task_id}&mode=download'
         }), 200
     
     except Exception as e:
@@ -3366,139 +3359,84 @@ def download_reporting_reports(task_id):
         return jsonify({'error': str(e)}), 500
 
 # ==============================================================================
-# 4. REPORTING
+# 5. REPORTING DOWNLOAD
 def download_single_report(report_type, report_base_path=None):
-    """Download a single report file"""
-    try:
-        if report_type not in REPORT_FILES:
-            return {'status': 'Failed', 'error': f'Unknown report type: {report_type}'}
-        
-        filename = REPORT_FILES[report_type]
-        
-        if report_base_path:
-            # Use dynamic report base path with timestamp
-            # ECL Engine automatically creates {data_yymm}_{timestamp_date}/03_result structure
-            base_path = report_base_path
-            # Look for the automatically created folder structure
-            
-            possible_paths = []
-            # Check if the base path exists
-            if os.path.exists(base_path):
-                # Look for subdirectories that match the pattern {data_yymm}_{timestamp_date}
-                for item in os.listdir(base_path):
-                    item_path = os.path.join(base_path, item)
-                    if os.path.isdir(item_path) and '_' in item:
-                        # Check if this directory contains 03_result
-                        result_path = os.path.join(item_path, '03_result')
-                        if os.path.exists(result_path):
-                            possible_paths.append(result_path)
-            
-            # Use the first found path, or construct a default one
-            if possible_paths:
-                file_path = os.path.join(possible_paths[0], filename)
-                logger.info(f"Found ECL Engine result folder: {possible_paths[0]}")
-            else:
-                # Fallback: try to construct the path assuming ECL Engine created it
-                file_path = os.path.join(base_path, '03_result', filename)
-                logger.warning(f"No ECL Engine result folder found, trying fallback path: {file_path}")
-        else:
-            # No dynamic path provided, cannot download
-            logger.error("No report base path provided and no default path available")
-            return {'status': 'Failed', 'error': 'No report base path available'}
-        
-        logger.info(f"Attempting to download {report_type} from: {file_path}")
-        
-        if not os.path.exists(file_path):
-            logger.error(f"Report file not found: {file_path}")
-            return {'status': 'Failed', 'error': f'Report file not found: {file_path}'}
-        
-        # Create ZIP file in memory
-        zip_buffer = BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            zip_file.write(file_path, filename)
-        
-        zip_buffer.seek(0)
-        
-        # Generate ZIP filename based on report type
-        zip_filename = filename.replace('.xlsx', '.zip')
-        
-        return send_file(
-            zip_buffer,
-            mimetype='application/zip',
-            as_attachment=True,
-            download_name=zip_filename
-        )
-    except Exception as e:
-        logger.error(f"Error downloading {report_type} report: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
+    """Legacy single-report helper no longer used by UI."""
+    logger.info(f"Legacy download_single_report called for type={report_type}, returning 410 Gone.")
+    return jsonify({'error': 'This download endpoint is deprecated. Please use /download_grouped_reports instead.'}), 410
 
 def download_multiple_reports(report_type, report_base_path=None):
-    """Download multiple report files as a zip file"""
+    """Legacy multi-report helper no longer used by UI."""
+    logger.info(f"Legacy download_multiple_reports called for type={report_type}, returning 410 Gone.")
+    return jsonify({'error': 'This download endpoint is deprecated. Please use /download_grouped_reports instead.'}), 410
+
+def _find_result_folder_for_timestamp(timestamp: str) -> str:
+    """
+    Given an Adhoc_Run timestamp folder name, find the inner 03_result folder
+    """
+    base_path = os.path.join(BASE_OUTPUT_FOLDER, timestamp)
+    if not os.path.exists(base_path):
+        raise FileNotFoundError(f"Output base path does not exist: {base_path}")
+
+    possible_paths = []
+    for item in os.listdir(base_path):
+        item_path = os.path.join(base_path, item)
+        if os.path.isdir(item_path) and '_' in item:
+            result_path = os.path.join(item_path, '03_result')
+            if os.path.exists(result_path):
+                possible_paths.append(result_path)
+
+    if not possible_paths:
+        raise FileNotFoundError(f"No 03_result folder found under: {base_path}")
+
+    logger.info(f"Using result folder for timestamp {timestamp}: {possible_paths[0]}")
+    return possible_paths[0]
+
+def download_grouped_reports(group_type: str, timestamp: str):
+    """
+    Download grouped reports (7 categories) for a given Adhoc_Run timestamp.
+    """
     try:
-        from io import BytesIO
-        import zipfile
-        
-        if report_type not in REPORT_FILES:
-            return {'status': 'Failed', 'error': f'Unknown report type: {report_type}'}
-        
-        filenames = REPORT_FILES[report_type]
-        if not isinstance(filenames, list):
-            return {'status': 'Failed', 'error': f'Report type {report_type} is not configured for multiple files'}
-        
-        if report_base_path:
-            # Use dynamic report base path with timestamp
-            # ECL Engine automatically creates {data_yymm}_{timestamp_date}/03_result structure
-            base_path = report_base_path
-            # Look for the automatically created folder structure
-            possible_paths = []
-            
-            # Check if the base path exists
-            if os.path.exists(base_path):
-                # Look for subdirectories that match the pattern {data_yymm}_{timestamp_date}
-                for item in os.listdir(base_path):
-                    item_path = os.path.join(base_path, item)
-                    if os.path.isdir(item_path) and '_' in item:
-                        # Check if this directory contains 03_result
-                        result_path = os.path.join(item_path, '03_result')
-                        if os.path.exists(result_path):
-                            possible_paths.append(result_path)
-            
-            # Use the first found path, or construct a default one
-            if possible_paths:
-                result_folder = possible_paths[0]
-                logger.info(f"Found ECL Engine result folder: {result_folder}")
-            else:
-                # Fallback: try to construct the path assuming ECL Engine created it
-                result_folder = os.path.join(base_path, '03_result')
-                logger.warning(f"No ECL Engine result folder found, trying fallback path: {result_folder}")
-        else:
-            # No dynamic path provided, cannot download
-            logger.error("No report base path provided and no default path available")
-            return {'status': 'Failed', 'error': 'No report base path available'}
-        
+        pattern = REPORT_GROUP_PATTERNS.get(group_type)
+        if not pattern:
+            return jsonify({'error': f'Unknown report group: {group_type}'}), 400
+
+        try:
+            result_folder = _find_result_folder_for_timestamp(timestamp)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return jsonify({'error': str(e)}), 404
+
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             files_added = 0
-            for filename in filenames:
-                file_path = os.path.join(result_folder, filename)
-                if os.path.exists(file_path):
-                    zip_file.write(file_path, filename)
-                    files_added += 1
-                else:
-                    logger.warning(f"Report file not found (skipping): {file_path}")
-            
+
+            if pattern['type'] == 'exact':
+                for fname in pattern['files']:
+                    file_path = os.path.join(result_folder, fname)
+                    if os.path.exists(file_path):
+                        zip_file.write(file_path, os.path.basename(file_path))
+                        files_added += 1
+                    else:
+                        logger.warning(f"Grouped report file not found (skipping): {file_path}")
+            elif pattern['type'] == 'prefix':
+                prefixes = pattern.get('prefixes', [])
+                for fname in os.listdir(result_folder):
+                    if not fname.lower().endswith('.xlsx'):
+                        continue
+                    if any(fname.startswith(pfx) for pfx in prefixes):
+                        file_path = os.path.join(result_folder, fname)
+                        zip_file.write(file_path, fname)
+                        files_added += 1
+
             if files_added == 0:
-                return {'status': 'Failed', 'error': f'No {report_type} report files found'}
-        
+                msg = f'No files found for report group {group_type} in {result_folder}'
+                logger.warning(msg)
+                return jsonify({'error': msg}), 404
+
         zip_buffer.seek(0)
-        
-        # Generate ZIP filename based on report type
-        zip_filename_map = {
-            'bu_excel': 'BU_Excel_Reports.zip',
-            'gl_posting': 'GL_Posting_Reports.zip'
-        }
-        zip_filename = zip_filename_map.get(report_type, f'{report_type}_Reports.zip')
-        
+        zip_filename = pattern.get('zip_name', f'{group_type}_Reports.zip')
+
         return send_file(
             zip_buffer,
             mimetype='application/zip',
@@ -3506,240 +3444,26 @@ def download_multiple_reports(report_type, report_base_path=None):
             download_name=zip_filename
         )
     except Exception as e:
-        logger.error(f"Error downloading {report_type} reports: {str(e)}")
-        return {'status': 'Failed', 'error': str(e)}
+        logger.error(f"Error downloading grouped reports [{group_type}] for {timestamp}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-# Reporting: Download ECL Monthly Report
-@app.route('/download_ecl_monthly_report', methods=['GET'])
-def download_ecl_monthly_report():
+@app.route('/download_grouped_reports/<group_type>', methods=['GET'])
+def api_download_grouped_reports(group_type):
     try:
-        # Get report_base_path from request args
-        report_base_path = request.args.get('report_base_path')
+        timestamp = request.args.get('timestamp')
         maker = request.args.get('maker', 'Unknown User')
-        
-        # Log download activity
-        file_path = f"ECL Monthly Report from {report_base_path}" if report_base_path else "ECL Monthly Report"
-        log_download_activity(maker, "Reporting", file_path)
-        
-        return download_single_report('ecl_monthly', report_base_path)
-    except Exception as e:
-        logger.error(f"Error in download_ecl_monthly_report: {str(e)}")
-        return jsonify({'error': f'Error downloading ECL Monthly Report: {str(e)}'}), 500
 
-# Reporting: Download ECL Summary Report
-@app.route('/download_ecl_summary_report', methods=['GET'])
-def download_ecl_summary_report():
-    try:
-        # Get report_base_path from request args
-        report_base_path = request.args.get('report_base_path')
-        maker = request.args.get('maker', 'Unknown User')
-        
-        # Log download activity
-        file_path = f"ECL Summary Report from {report_base_path}" if report_base_path else "ECL Summary Report"
-        log_download_activity(maker, "Reporting", file_path)
-        
-        return download_single_report('ecl_summary', report_base_path)
-    except Exception as e:
-        logger.error(f"Error in download_ecl_summary_report: {str(e)}")
-        return jsonify({'error': f'Error downloading ECL Summary Report: {str(e)}'}), 500
+        if not timestamp:
+            return jsonify({'error': 'Missing timestamp'}), 400
 
-# Reporting: Download BU Excel Reports
-@app.route('/download_bu_excel_reports', methods=['GET'])
-def download_bu_excel_reports():
-    try:
-        # Get report_base_path from request args
-        report_base_path = request.args.get('report_base_path')
-        maker = request.args.get('maker', 'Unknown User')
-        
-        # Log download activity
-        file_path = f"BU Excel Reports from {report_base_path}" if report_base_path else "BU Excel Reports"
-        log_download_activity(maker, "Reporting", file_path)
-        
-        return download_multiple_reports('bu_excel', report_base_path)
+        log_download_activity(maker, "Reporting", f"Download {group_type} reports for {timestamp}")
+        return download_grouped_reports(group_type, timestamp)
     except Exception as e:
-        logger.error(f"Error in download_bu_excel_reports: {str(e)}")
-        return jsonify({'error': f'Error downloading BU Excel Reports: {str(e)}'}), 500
+        logger.error(f"Error in api_download_grouped_reports({group_type}): {str(e)}")
+        return jsonify({'error': f'Error downloading {group_type} reports: {str(e)}'}), 500
 
-# Reporting: Download HKMA Report
-@app.route('/download_hkma_report', methods=['GET'])
-def download_hkma_report():
-    try:
-        report_base_path = request.args.get('report_base_path')
-        maker = request.args.get('maker', 'Unknown User')
-        
-        file_path = f"HKMA Report from {report_base_path}" if report_base_path else "HKMA Report"
-        log_download_activity(maker, "Reporting", file_path)
-        
-        return download_single_report('hkma', report_base_path)
-    except Exception as e:
-        logger.error(f"Error in download_hkma_report: {str(e)}")
-        return jsonify({'error': f'Error downloading HKMA Report: {str(e)}'}), 500
-
-# Reporting: Download Audit Trial Report
-@app.route('/download_audit_trial_report', methods=['GET'])
-def download_audit_trial_report():
-    try:
-        report_base_path = request.args.get('report_base_path')
-        maker = request.args.get('maker', 'Unknown User')
-        
-        file_path = f"Audit Trial Report from {report_base_path}" if report_base_path else "Audit Trial Report"
-        log_download_activity(maker, "Reporting", file_path)
-        
-        return download_single_report('audit_trial', report_base_path)
-    except Exception as e:
-        logger.error(f"Error in download_audit_trial_report: {str(e)}")
-        return jsonify({'error': f'Error downloading Audit Trial Report: {str(e)}'}), 500
-
-# Reporting: Download GL Posting Report
-@app.route('/download_gl_posting_report', methods=['GET'])
-def download_gl_posting_report():
-    try:
-        report_base_path = request.args.get('report_base_path')
-        maker = request.args.get('maker', 'Unknown User')
-        
-        file_path = f"GL Posting Report from {report_base_path}" if report_base_path else "GL Posting Report"
-        log_download_activity(maker, "Reporting", file_path)
-        
-        return download_multiple_reports('gl_posting', report_base_path)
-    except Exception as e:
-        logger.error(f"Error in download_gl_posting_report: {str(e)}")
-        return jsonify({'error': f'Error downloading GL Posting Report: {str(e)}'}), 500
-
-# Reporting: Check report availability
-@app.route('/check_report_availability', methods=['GET'])
-def check_report_availability():
-    try:
-        availability = {}
-        for report_type, filename in REPORT_FILES.items():
-            if report_type == 'bu_excel':
-                # Check all BU Excel files
-                available_files = []
-                for bu_filename in filename:
-                    file_path = os.path.join(REPORT_BASE_PATH, bu_filename)
-                    if os.path.exists(file_path):
-                        available_files.append(bu_filename)
-                availability[report_type] = {
-                    'available': len(available_files) > 0,
-                    'total_files': len(filename),
-                    'available_files': available_files
-                }
-            else:
-                # Check single file
-                file_path = os.path.join(REPORT_BASE_PATH, filename)
-                availability[report_type] = {
-                    'available': os.path.exists(file_path),
-                    'filename': filename
-                }
-        
-        return jsonify({
-            'availability': availability,
-            'base_path': REPORT_BASE_PATH
-        }), 200
-    except Exception as e:
-        logger.error(f"Error checking report availability: {str(e)}")
-        return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500
- 
-# Reporting: Check report availability for specific timestamp
-@app.route('/check_report_availability/<timestamp>', methods=['GET'])
-def check_report_availability_for_timestamp(timestamp):
-    try:
-        # Construct the base path for this timestamp
-        base_path = os.path.join(BASE_OUTPUT_FOLDER, timestamp)
-        
-        # Check if the base path exists
-        if not os.path.exists(base_path):
-            logger.warning(f"Base path does not exist: {base_path}")
-            return jsonify({'has_reports': False, 'error': 'Output folder not found'}), 200
-        
-        # Look for the automatically created folder structure {data_yymm}_{timestamp_date}
-        possible_paths = []
-        for item in os.listdir(base_path):
-            item_path = os.path.join(base_path, item)
-            if os.path.isdir(item_path) and '_' in item:
-                # Check if this directory contains 03_result
-                result_path = os.path.join(item_path, '03_result')
-                if os.path.exists(result_path):
-                    possible_paths.append(result_path)
-                    logger.info(f"Found result folder: {result_path}")
-        
-        if not possible_paths:
-            logger.warning(f"No result folders found in: {base_path}")
-            logger.warning(f"Available items in {base_path}: {os.listdir(base_path) if os.path.exists(base_path) else 'N/A'}")
-            return jsonify({'has_reports': False, 'error': 'No result folders found'}), 200
-        
-        # Check if any reports exist in the result folders
-        has_reports = False
-        for result_path in possible_paths:
-            for report_type, filename in REPORT_FILES.items():
-                if report_type == 'bu_excel':
-                    # Check if at least one BU Excel file exists
-                    for bu_filename in filename:
-                        file_path = os.path.join(result_path, bu_filename)
-                        if os.path.exists(file_path):
-                            has_reports = True
-                            break
-                    if has_reports:
-                        break
-                else:
-                    # Check single file
-                    file_path = os.path.join(result_path, filename)
-                    if os.path.exists(file_path):
-                        has_reports = True
-                        break
-            if has_reports:
-                break
-        
-        logger.info(f"Report availability check for timestamp {timestamp}: {has_reports}")
-        return jsonify({'has_reports': has_reports}), 200
-    
-    except Exception as e:
-        logger.error(f"Error checking report availability for timestamp {timestamp}: {str(e)}")
-        return jsonify({'error': f'Error checking report availability: {str(e)}'}), 500 
-
-@app.route('/confirm_ecl_result', methods=['POST'])
-def confirm_ecl_result():
-    """Confirm ECL result and log the confirmation"""
-    try:
-        data = request.get_json()
-        task_id = data.get('task_id')
-        timestamp = data.get('timestamp')
-        
-        if not task_id or not timestamp:
-            return jsonify({'error': 'Missing task_id or timestamp'}), 400
-        
-        # Get the settings from database
-        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
-        cursor = conn.cursor()
-        cursor.execute(f"""
-            SELECT settings, maker FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
-            WHERE settings IS NOT NULL
-            AND ISJSON(settings) = 1
-            AND JSON_VALUE(settings, '$.task_id') = ?
-        """, (task_id,))
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
-            return jsonify({'error': 'Record not found'}), 404
-        
-        settings = row[0] if row[0] else '{}'
-        maker = row[1] if row[1] else 'Unknown User'
-        
-        # Log ECL result confirmation
-        log_ecl_result_confirmation(maker, timestamp, settings)
-        
-        return jsonify({
-            'message': 'ECL result confirmed successfully',
-            'task_id': task_id,
-            'timestamp': timestamp
-        }), 200
-    
-    except Exception as e:
-        logger.error(f"Error confirming ECL result: {str(e)}")
-        return jsonify({'error': f'Error confirming ECL result: {str(e)}'}), 500
- 
 # ==============================================================================
-# 5. ROLE MANAGEMENT
+# 6. ROLE MANAGEMENT
 @app.route('/get_user_records', methods=['GET'])
 def api_get_user_records():
     """Get all user records from database"""
@@ -3966,7 +3690,7 @@ def api_update_role_function_record():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # ==============================================================================
-# 6. AUDIT TRAIL
+# 7. AUDIT TRAIL
 def create_audit_trial_folder():
     """Create the AuditTrial folder if it doesn't exist"""
     try:

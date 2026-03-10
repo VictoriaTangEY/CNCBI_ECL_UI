@@ -7,7 +7,6 @@
 
     "OUTPUT_PATH": "C:\\Users\\KJ234DV\\OneDrive - EY\\01EY_CNCBI\\CNCBI\\99_data\\03_output_folder",
 
-    "PREV_YYMM": 20231231,
     "RUN_MODE": "3",
     "SANITY_CHECK_MODE": "2.2",
     "TO_DB": "OFF",
