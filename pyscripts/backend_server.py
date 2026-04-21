@@ -772,7 +772,6 @@ def create_reporting_records_table():
             END
         """)
         conn.close()
-        logger.info("UI_reporting_records table checked/created successfully")
         return True
     except Exception as e:
         logger.error(f"Error creating UI_reporting_records table: {str(e)}")
@@ -2803,10 +2802,19 @@ def confirm_run_record():
             WHERE id IN ({placeholders}) AND status = 'Completed'
         """, [checker] + record_ids)
         rows_affected = cursor.rowcount
-        conn.close()
         if rows_affected > 0:
+            cursor.execute(f"""
+                SELECT time, settings FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+                WHERE id IN ({placeholders})
+            """, record_ids)
+            confirmed_rows = cursor.fetchall()
+            conn.close()
+            for row in confirmed_rows:
+                rec_time, rec_settings = row
+                log_ecl_result_confirmation(checker, rec_time, rec_settings)
             logger.info(f"Confirmed run record(s) {record_ids} with checker {checker}")
             return jsonify({'message': 'Run record(s) confirmed successfully'}), 200
+        conn.close()
         return jsonify({'error': 'No Completed records found with given ids'}), 404
     except Exception as e:
         logger.error(f"Error confirming run record: {str(e)}")
@@ -2833,10 +2841,19 @@ def unconfirm_run_record():
             WHERE id IN ({placeholders}) AND status = 'Confirmed'
         """, [checker] + record_ids)
         rows_affected = cursor.rowcount
-        conn.close()
         if rows_affected > 0:
+            cursor.execute(f"""
+                SELECT time, settings FROM [{DB_NAME}].[dbo].[UI_eclengine_records]
+                WHERE id IN ({placeholders})
+            """, record_ids)
+            unconfirmed_rows = cursor.fetchall()
+            conn.close()
+            for row in unconfirmed_rows:
+                rec_time, rec_settings = row
+                log_ecl_result_confirmation(checker, rec_time, rec_settings, operation='Revoke Confirmation')
             logger.info(f"Unconfirmed run record(s) {record_ids} with checker {checker}")
             return jsonify({'message': 'Run record(s) unconfirmed successfully'}), 200
+        conn.close()
         return jsonify({'error': 'No Confirmed records found with given ids'}), 404
     except Exception as e:
         logger.error(f"Error unconfirming run record: {str(e)}")
@@ -3696,7 +3713,6 @@ def create_audit_trial_folder():
     try:
         audit_folder = AUDIT_FOLDER
         os.makedirs(audit_folder, exist_ok=True)
-        logger.info(f"AuditTrial folder created/verified: {audit_folder}")
         return True
     except Exception as e:
         logger.error(f"Error creating AuditTrial folder: {str(e)}")
@@ -3807,14 +3823,14 @@ def create_all_admin_logs():
         logger.error(f"Error creating all admin logs: {str(e)}")
         return jsonify({'error': f'Error creating combined log: {str(e)}'}), 500
 
-def log_ecl_result_confirmation(user_name, timestamp, settings):
-    """Log ECL result confirmation to the audit trail"""
+def log_ecl_result_confirmation(user_name, timestamp, settings, operation='Approve Record'):
+    """Log ECL result confirmation/unconfirmation to the audit trail"""
     try:
         create_audit_trial_folder()
         log_file = AUDIT_LOGS['ecl_confirmation']
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        log_entry = f"[{current_time}] User: {user_name} | Page: Run Management | Operation: Approve Record | Timestamp: {timestamp} | Settings: {settings}\n"
+        log_entry = f"[{current_time}] User: {user_name} | Page: Run Management | Operation: {operation} | Timestamp: {timestamp} | Settings: {settings}\n"
         
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(log_entry)

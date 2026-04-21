@@ -93,13 +93,6 @@
       formats: ['LOG'],
       buttonText: 'Download',
       logType: 'parameter_updates'
-    },
-    {
-      title: 'Data Sanity Reports',
-      description: 'Data quality check results',
-      formats: ['LOG'],
-      buttonText: 'Download',
-      logType: 'data_sanity_reports'
     }
   ]
   const currentCards = computed(() => currentTab.value === 'admin' ? adminCards : systemCards)

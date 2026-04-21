@@ -101,7 +101,6 @@
             <button
               class="upload-button"
               style="background: #FF612C;"
-              :disabled="!canGenerateDualReport"
               @click="generateDualReport"
             >
               Generate Reports
@@ -401,30 +400,19 @@ async function checkReportAvailability() {
   }
 }
 
-// Derived selection state for report generation
 const selectedConfirmedRuns = computed(() =>
   confirmedRunList.value.filter((item) => item.selected)
 )
 
-const canGenerateDualReport = computed(() => {
-  if (selectedConfirmedRuns.value.length !== 2) return false
-  const [a, b] = selectedConfirmedRuns.value
-  if (!a || !b) return false
-  if (a.status !== 'Confirmed' || b.status !== 'Confirmed') return false
-  if (!a.reportingDate || !b.reportingDate) return false
-  if (a.reportingDate === b.reportingDate) return false
-  return true
-})
-
 async function generateDualReport() {
   const selected = selectedConfirmedRuns.value
   if (selected.length !== 2) {
-    alert('Please select exactly two confirmed runs.')
+    alert('Please select exactly two records to generate reports.')
     return
   }
   const [a, b] = selected
   if (!a.reportingDate || !b.reportingDate || a.reportingDate === b.reportingDate) {
-    alert('Selected runs must have different reporting dates.')
+    alert('Please select two records with different reporting dates.')
     return
   }
 

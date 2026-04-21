@@ -1,0 +1,77 @@
+{
+  "RUN_SETTING": {
+    "DATA_PATH": "C:\\Users\\KJ234DV\\OneDrive - EY\\EY\\CNCBI\\99_data\\01_merged_data_folder",
+    "DATA_YYMM": 20241231,
+
+    "PARAM_PATH": "C:\\Users\\KJ234DV\\OneDrive - EY\\EY\\CNCBI\\99_data\\02_param_upload_folder",
+
+    "OUTPUT_PATH": "C:\\Users\\KJ234DV\\OneDrive - EY\\01EY_CNCBI\\CNCBI\\99_data\\03_output_folder",
+
+    "RUN_MODE": "3",
+    "SANITY_CHECK_MODE": "2.2",
+    "TO_DB": "OFF",
+    "TEST_MODE": "OFF",
+    "TEST_DEAL_LIST": [],
+    "ECL_ADJ_MODE": "OFF",
+
+    "RUN_SCOPE": [
+      "LOAN",
+      "INTEREST_BEARING_LOAN",
+      "MONEY_MARKET",
+      "BOND",
+      "CREDIT_CARD"
+    ]
+  },
+
+  "MERGE_SETTING": {
+    "PARSE_INPUT_DIR": "C:\\Users\\KJ234DV\\OneDrive - EY\\EY\\CNCBI\\98_rawdata\\inbound\\{reporting_date}\\raw_data_dat",
+    "PARSE_OUTPUT_DIR": "C:\\Users\\KJ234DV\\OneDrive - EY\\EY\\CNCBI\\98_rawdata\\inbound\\{reporting_date}\\raw_data_csv",
+    "MERGE_INPUT_DIR": "C:\\Users\\KJ234DV\\OneDrive - EY\\EY\\CNCBI\\98_rawdata\\inbound\\{reporting_date}\\raw_data_csv2",
+    "FIELD_POSITION_FILE": "./data_merge/config/field_positions.json",
+    "REGIONS": ["hk"]
+  },
+
+  "EMAIL_SETTING": {
+    "SEND_EMAIL": "OFF",
+    "SMTP_SERVER": "smtp.163.com",
+    "SMTP_PORT": 25,
+    "SENDER_EMAIL": "no-reply-ECL@cncbinternational.com",
+    "SENDER_PASSWORD": "",
+    "RECIPIENTS_TO": ["EYA_Alice_Wu@cncbinternational2.comm"],
+    "RECIPIENTS_CC": [""],
+    "RECIPIENTS_BCC": []
+  },
+
+  "CONSTANT": {
+    "days_in_year": 365.25,
+    "days_in_month": 30.5
+  },
+
+  "SCENARIO_SETTING": {
+    "EXTEND_YR": 10,
+    "TOTAL_YR": 30,
+    "INPUT_DATA_EXT": "xlsx"
+  },
+
+  "DATA_IO_SETTING": {
+    "INPUT_DATA_EXT": "csv",
+    "EXPOSURE_TABLE_NAME": "exposure_table",
+    "COLLATERAL_TABLE_NAME": "collateral_table",
+    "SCHEDULE_TABLE_NAME": "schedule_table",
+    "FACILITY_TABLE_NAME": "facility_table"
+  },
+
+  "DB_SETTING": {
+    "DSN": "ECLSITFSDB",
+    "DB_NAME": "ey_test",
+    "USERNAME": "eclappusr",
+    "PASSWORD": "Abcdef123456"
+  },
+
+  "HOUSEKEEPING_SETTING": {
+    "ENABLED": true,
+    "DEFAULT_MONTH_OLD": 36,
+    "EXTENDED_MONTH_OLD": 60,
+    "FOLDER_CLEANUP_ENABLED": true
+  }
+}

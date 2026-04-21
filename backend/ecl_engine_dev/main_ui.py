@@ -28,9 +28,6 @@ from utils.loggers import createLogHandler
 from utils.schedule_run import caheck_and_exit_if_not_scheduled
 from utils.email_notifier import init_notifier, get_notifier
 
-# # Check if today is a scheduled run day -- ui run no need
-# check_and_exit_if_not_scheduled("batch_calendar.txt")
-
 
 warnings.filterwarnings('ignore')
 
