@@ -1,18 +1,18 @@
 <template>
   <div style="display: flex; min-height: 100vh; margin-top: 95px;">
-    <!-- 左侧导航栏 -->
+    <!-- Left navigation -->
     <aside style="width: 280px; background-color: #f5f5f5; padding: 30px 20px;">
       <h3 style="font-weight: bold; font-size: 22px; margin-bottom: 24px;">Parameters</h3>
       <ul style="list-style: none; padding-left: 0;">
         <li @click="currentTab = 'parameter'" :style="{ cursor: 'pointer', color: currentTab === 'parameter' ? '#ff612c' : '#333', fontWeight: currentTab === 'parameter' ? '600' : 'normal', marginBottom: '10px', fontSize: '20px' }">▸ Parameter</li>
-        <li @click="currentTab = 'adjustment'" :style="{ cursor: 'pointer', color: currentTab === 'adjustment' ? '#ff612c' : '#333', fontWeight: currentTab === 'adjustment' ? '600' : 'normal', fontSize: '20px' }">▸ Adjustment</li>
+        <li v-if="!isFMGUser" @click="currentTab = 'adjustment'" :style="{ cursor: 'pointer', color: currentTab === 'adjustment' ? '#ff612c' : '#333', fontWeight: currentTab === 'adjustment' ? '600' : 'normal', fontSize: '20px' }">▸ Adjustment</li>
       </ul>
     </aside>
 
-    <!-- 主体内容 -->
+    <!-- Main content -->
     <main style="flex-grow: 1; padding: 40px;">
 
-      <!-- 面包屑导航 -->
+      <!-- Breadcrumb navigation -->
       <nav aria-label="breadcrumb" class="breadcrumb-nav">
         <ol class="breadcrumb-list">
           <li><svg style="width:16px; height:16px; fill:#666; vertical-align:middle;" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg> Home</li>
@@ -43,7 +43,7 @@
               <div v-if="message" class="message" :class="messageClass">{{ message }}</div>
             </div>
           </div>
-          <!-- 版本名输入框，放在upload box下方 -->
+          <!-- Version input below upload box -->
           <div style="margin: 18px auto 0; max-width: 600px; display: flex; gap: 10px; justify-content: center;">
             <!-- Parameter Category Selection (only for Parameter tab) -->
             <select
@@ -84,8 +84,8 @@
       <div style="margin-top: 50px;">
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 0;">Review</h2>
         <div style="margin-bottom: 10px; padding: 8px; background-color: #e3f2fd; border-radius: 4px; font-size: 14px; color: #1976d2;">
-          <strong>Note:</strong> Only records that have passed pre-run validation can be approved. 
-          Records with ✓ are eligible for approval, records with ⚠ need pre-run validation first.
+          <strong>Note:</strong> Status flow is Uploaded -> Validated -> Approved. 
+          Only records in Validated status can be selected for approval. After Approve, the corresponding parameter files are copied to the run ECL param folder (02_param_upload_folder). Users need to approve the target parameter to update the parameters used by run ECL.
         </div>
         <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
 
@@ -114,8 +114,7 @@
             <tbody>
               <template v-for="(item, index) in reviewList" :key="index">
                 <tr :style="{ 
-                  backgroundColor: item.approved ? '#e8f5e9' : item.hasPassedPreRunValidation ? '#f0f8ff' : '#f5f5f5',
-                  opacity: item.hasPassedPreRunValidation ? 1 : 0.7
+                  backgroundColor: item.status === 'Approved' ? '#fff3cd' : '#fff'
                 }">
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
                     <input 
@@ -131,13 +130,8 @@
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.category || '-' }}</td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                    <span :style="{ 
-                      color: item.hasPassedPreRunValidation ? '#4caf50' : '#ff9800',
-                      fontWeight: 'bold'
-                    }">
-                      {{ item.status }}
-                      <span v-if="item.hasPassedPreRunValidation" style="margin-left: 5px;">✓</span>
-                      <span v-else style="margin-left: 5px;">⚠</span>
+                    <span style="font-weight: bold;">
+                      {{ getRecordDisplayStatus(item) }}
                     </span>
                   </td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
@@ -242,7 +236,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
-import { getUserDisplayName } from '../services/authService'
+import { getUserDisplayName, getUserRole, user } from '../services/authService'
 
 const currentTab = ref<'parameter' | 'adjustment'>('parameter')
 const selectedFile = ref<File | null>(null)
@@ -261,6 +255,7 @@ const currentTimestamp = ref('')
 const reviewList = ref<any[]>([])
 // Pre-run validation records list
 const prerunValidationList = ref<any[]>([])
+const isFMGUser = computed(() => getUserRole().trim().toUpperCase() === 'FMG')
 
 const messageClass = computed(() => message.value.includes('✅') ? 'success' : message.value.includes('❌') ? 'error' : 'info')
 
@@ -290,7 +285,10 @@ const hasSelectedEligibleRecords = computed(() => {
 })
 
 const selectedCategory = ref('')
-const parameterCategories = ['Regular', 'Non-regular']
+const parameterCategories = computed(() => {
+  if (isFMGUser.value) return ['GL-Posting']
+  return ['Regular', 'Non-regular', 'GL-Posting']
+})
 
 // Auto-generated filename based on tab and category
 const autoGeneratedFilename = computed(() => {
@@ -299,6 +297,8 @@ const autoGeneratedFilename = computed(() => {
       return 'CNCBI ECL engine param table_regular updated.xlsx'
     } else if (selectedCategory.value === 'Non-regular') {
       return 'CNCBI ECL engine param table_not regularly updated.xlsx'
+    } else if (selectedCategory.value === 'GL-Posting') {
+      return 'CNCBI ECL engine param table_gl posting.xlsx'
     }
   } else if (currentTab.value === 'adjustment') {
     return 'CNCBI ECL engine param table_adjustment data.xlsx'
@@ -320,10 +320,10 @@ watch(currentTab, () => {
   uploadSuccess.value = false
   uploadTried.value = false
   if (fileInput.value) fileInput.value.value = ''
-  // 切换tab时清空versionSuffix和selectedCategory
+  // Clear versionSuffix and selectedCategory when switching tabs
   versionSuffix.value = ''
-  selectedCategory.value = ''
-  // 更新时间戳
+  selectedCategory.value = isFMGUser.value ? 'GL-Posting' : ''
+  // Refresh timestamp
   currentTimestamp.value = generateTimestamp()
 })
 
@@ -385,10 +385,21 @@ const updateReviewListWithValidationStatus = () => {
   })
 }
 
+// Display status for review table
+const getRecordDisplayStatus = (record: any) => {
+  if (record.status === 'Approved') return 'Approved'
+  if (record.hasPassedPreRunValidation) return 'Validated'
+  return 'Uploaded'
+}
+
 // Load data when component mounts
 onMounted(() => {
+  if (isFMGUser.value) {
+    currentTab.value = 'parameter'
+    selectedCategory.value = 'GL-Posting'
+  }
   loadReviewRecords()
-  // 初始化时间戳
+  // Initialize timestamp
   currentTimestamp.value = generateTimestamp()
 })
 
@@ -425,6 +436,12 @@ const formatFileSize = (bytes: number): string => {
 
 const uploadFile = async () => {
   if (!selectedFile.value) return
+  if (isFMGUser.value && (currentTab.value !== 'parameter' || selectedCategory.value !== 'GL-Posting')) {
+    message.value = '❌ FMG users can only upload GL-Posting parameter files.'
+    uploadSuccess.value = false
+    uploadTried.value = true
+    return
+  }
 
   const formData = new FormData()
   formData.append('file', selectedFile.value)
@@ -433,6 +450,7 @@ const uploadFile = async () => {
   formData.append('category', selectedCategory.value)
   formData.append('auto_filename', autoGeneratedFilename.value)
   formData.append('maker', getUserDisplayName())
+  formData.append('login_name', user.value?.loginName || '')
 
   try {
     message.value = '⏳ Uploading...'

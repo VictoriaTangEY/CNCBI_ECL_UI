@@ -45,7 +45,7 @@ Configuration Categories:
 BASE_ROOT = r'/u01/Apps/EY_working'
 BASE_UI_ROOT = os.path.join(BASE_ROOT, 'ECL_UI_v0.1')
 BASE_DATA_ROOT = os.path.join(BASE_ROOT, '99_data')
-BASE_ECL_ENGINE = os.path.join(BASE_ROOT, 'ECL_Engine_v0.4')
+BASE_ECL_ENGINE = os.path.join(BASE_ROOT, 'ECL_Engine_v0.5')
 BASE_UPLOAD_FOLDER = os.path.join(BASE_UI_ROOT, 'interim')      
 BASE_APPROVED_FOLDER = os.path.join(BASE_UI_ROOT, 'approved')    
 BASE_OUTPUT_FOLDER = os.path.join(BASE_DATA_ROOT, '03_output_folder')      
@@ -398,7 +398,6 @@ def create_ui_parameter_table():
         """)
         table_exists = cursor.fetchone()[0] > 0
         if table_exists:
-            logger.info("UI_Parameter_records table already exists")
             return True
         # Create UI_Parameter_records table in the specific database
         logger.info("Creating UI_Parameter_records table...")
@@ -932,9 +931,6 @@ def create_ui_user_maintenance_table():
                 )
             """)
             logger.info("UI_user_maintenance table created successfully")
-        else:
-            logger.info("UI_user_maintenance table already exists")
-        
         conn.close()
         return True
     except Exception as e:
@@ -973,9 +969,6 @@ def create_ui_role_maintenance_table():
                 )
             """)
             logger.info("UI_role_maintenance table created successfully")
-        else:
-            logger.info("UI_role_maintenance table already exists")
-        
         conn.close()
         return True
     except Exception as e:
@@ -1014,9 +1007,6 @@ def create_ui_function_maintenance_table():
                 )
             """)
             logger.info("UI_function_maintenance table created successfully")
-        else:
-            logger.info("UI_function_maintenance table already exists")
-        
         conn.close()
         return True
     except Exception as e:
@@ -1087,8 +1077,6 @@ def create_ui_role_function_table(role_name):
                     """, (function_name, 'Inactive', 'System', current_time))
                 
                 logger.info(f"Added {len(missing_functions)} missing functions to {table_name}")
-            else:
-                logger.info(f"All functions already exist in {table_name}")
         else:
             logger.warning(f"No active functions found to populate {table_name} table")
         
@@ -1300,7 +1288,6 @@ def initialize_role_function_tables():
         
         # Create role function table for each role
         for role_name in roles:
-            logger.info(f"Initializing role function table for role: {role_name}")
             create_ui_role_function_table(role_name)
             
         return True
@@ -1619,11 +1606,40 @@ def upload_file():
     file_type = request.form.get('fileType', 'unknown')  # Get file type from form data
     user_suffix = request.form.get('suffix', '')  # Get user input suffix
     maker = request.form.get('maker', '')
+    login_name = request.form.get('login_name', '')
     category = request.form.get('category', '')
     checker = request.form.get('checker', '')
     auto_filename = request.form.get('auto_filename', '')  # Get auto-generated filename
  
-    logger.info(f"Upload request - file_type: '{file_type}', user_suffix: '{user_suffix}', maker: '{maker}', category: '{category}', auto_filename: '{auto_filename}'")
+    logger.info(f"Upload request - file_type: '{file_type}', user_suffix: '{user_suffix}', maker: '{maker}', login_name: '{login_name}', category: '{category}', auto_filename: '{auto_filename}'")
+    if not login_name:
+        return jsonify({'error': 'Missing login_name'}), 400
+
+    # Enforce role-based upload policy for FMG users
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT default_role
+            FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            WHERE LOWER(login_name) = LOWER(?)
+        """, (login_name,))
+        role_row = cursor.fetchone()
+        conn.close()
+
+        if not role_row:
+            return jsonify({'error': 'User not found'}), 403
+
+        user_role = (role_row[0] or '').strip().upper()
+        normalized_category = category.strip().lower().replace('_', '-').replace(' ', '-')
+
+        if user_role == 'FMG':
+            if file_type != 'parameter' or normalized_category != 'gl-posting':
+                return jsonify({'error': 'FMG users can only upload GL-Posting parameter files.'}), 403
+    except Exception as e:
+        logger.error(f"Error validating upload policy: {str(e)}")
+        return jsonify({'error': 'Error validating upload policy'}), 500
+
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     if file:
@@ -1793,7 +1809,6 @@ def update_approval_status():
             approved_folder_path = copy_result['destination']
             copy_to_param_result = copy_approved_to_param_path(approved_folder_path)
             if copy_to_param_result['status'] == 'success':
-                logger.info(f"Record {record_id} approved, folder copied to approved directory and files copied to PARAM_PATH")
                 return jsonify({
                     'message': 'Status updated successfully, folder copied to approved directory and files copied to PARAM_PATH',
                     'copy_result': copy_result,
