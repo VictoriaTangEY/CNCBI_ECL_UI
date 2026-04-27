@@ -87,6 +87,9 @@
           <strong>Note:</strong> Status flow is Uploaded -> Validated -> Approved. 
           Only records in Validated status can be selected for approval. After Approve, the corresponding parameter files are copied to the run ECL param folder (02_param_upload_folder). Users need to approve the target parameter to update the parameters used by run ECL.
         </div>
+        <div v-if="isFMGUser" style="margin-bottom: 10px; padding: 8px; background-color: #e8f5e9; border-radius: 4px; font-size: 14px; color: #2e7d32;">
+          <strong>Note (FMG):</strong> You can only download GL-Posting parameter files in Review. Other records are visible but not downloadable. Pre-run validation is not available.
+        </div>
         <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
 
           <table style="width: 100%; border-collapse: collapse; background: white;">
@@ -108,7 +111,7 @@
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 50px;">Status</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Checker</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download File</th>
-                <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Pre-run Validation</th>
+                <th v-if="!isFMGUser" style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Pre-run Validation</th>
               </tr>
             </thead>
             <tbody>
@@ -135,22 +138,35 @@
                     </span>
                   </td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
-                  <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;"><button @click="downloadRow(index)" :style="{ color: item.downloaded ? '#4CAF50' : '#333', cursor: 'pointer', fontSize: '20px', background: 'none', border: 'none' }">⬇️</button></td>
-                                  <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
-                  <button 
-                    @click="startPreRunValidation(item, index)"
-                    :disabled="item.preRunValidation?.status === 'running'"
-                    :style="{ 
-                      color: '#333',
-                      cursor: item.preRunValidation?.status === 'running' ? 'not-allowed' : 'pointer',
-                      fontSize: '20px',
-                      background: 'none',
-                      border: 'none'
-                    }"
-                  >
-                    ▶️
-                  </button>
-                </td>
+                  <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
+                    <button
+                      @click="downloadRow(index)"
+                      :disabled="!canDownloadReviewRow(item)"
+                      :style="{
+                        color: item.downloaded ? '#4CAF50' : '#333',
+                        cursor: canDownloadReviewRow(item) ? 'pointer' : 'not-allowed',
+                        fontSize: '20px',
+                        background: 'none',
+                        border: 'none',
+                        opacity: canDownloadReviewRow(item) ? 1 : 0.35
+                      }"
+                    >⬇️</button>
+                  </td>
+                  <td v-if="!isFMGUser" style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
+                    <button
+                      @click="startPreRunValidation(item, index)"
+                      :disabled="item.preRunValidation?.status === 'running'"
+                      :style="{
+                        color: '#333',
+                        cursor: item.preRunValidation?.status === 'running' ? 'not-allowed' : 'pointer',
+                        fontSize: '20px',
+                        background: 'none',
+                        border: 'none'
+                      }"
+                    >
+                      ▶️
+                    </button>
+                  </td>
                 </tr>
               </template>
             </tbody>
@@ -170,7 +186,7 @@
       </div>
 
       <!-- Pre-run Validation Records Table -->
-      <div style="margin-top: 50px;">
+      <div v-if="!isFMGUser" style="margin-top: 50px;">
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 0;">Pre-run Validation Records</h2>
         <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
 
@@ -257,6 +273,14 @@ const reviewList = ref<any[]>([])
 const prerunValidationList = ref<any[]>([])
 const isFMGUser = computed(() => getUserRole().trim().toUpperCase() === 'FMG')
 
+const canFMGDownloadRecord = (item: any) =>
+  item.type === 'parameter' && item.category === 'GL-Posting'
+
+const canDownloadReviewRow = (item: any) =>
+  !isFMGUser.value || canFMGDownloadRecord(item)
+
+const getLoginName = (): string => user.value?.loginName || ''
+
 const messageClass = computed(() => message.value.includes('✅') ? 'success' : message.value.includes('❌') ? 'error' : 'info')
 
 const allSelected = computed({
@@ -330,7 +354,15 @@ watch(currentTab, () => {
 // Load data from database
 const loadReviewRecords = async () => {
   try {
-    const response = await axios.get('/api/get_review_records')
+    const loginName = getLoginName()
+    if (!loginName) {
+      console.error('Missing login name; cannot load review records.')
+      reviewList.value = []
+      return
+    }
+    const response = await axios.get('/api/get_review_records', {
+      params: { login_name: loginName }
+    })
     reviewList.value = response.data.records.map((record: any) => ({
       ...record,
       approved: record.status === 'Approved',
@@ -349,7 +381,14 @@ const loadReviewRecords = async () => {
 // Load pre-run validation records from database
 const loadPreRunValidationRecords = async () => {
   try {
-    const response = await axios.get('/api/get_prerun_validation_records')
+    const loginName = getLoginName()
+    if (!loginName) {
+      prerunValidationList.value = []
+      return
+    }
+    const response = await axios.get('/api/get_prerun_validation_records', {
+      params: { login_name: loginName }
+    })
     prerunValidationList.value = (response.data.records || []).map((record: any) => ({
       ...record,
       type: record.upload_type || record.type, // Use upload_type if available, otherwise fallback to type
@@ -473,10 +512,20 @@ const uploadFile = async () => {
 
 const downloadRow = async (index: number) => {
   const item = reviewList.value[index]
+  if (!canDownloadReviewRow(item)) {
+    alert('FMG users can only download GL-Posting parameter files.')
+    return
+  }
+  const loginName = getLoginName()
+  if (!loginName) {
+    alert('Missing login. Please sign in again.')
+    return
+  }
   try {
     // Call the download API
     const response = await axios.get(`/api/download_files/${item.id}`, {
-      responseType: 'blob'
+      responseType: 'blob',
+      params: { login_name: loginName }
     })
     
     // Create download link
@@ -506,12 +555,18 @@ const approveSelected = async () => {
       return
     }
     
+    const loginName = getLoginName()
+    if (!loginName) {
+      alert('Missing login. Please sign in again.')
+      return
+    }
     for (const item of selectedItems) {
       // Call API to update approval status
       await axios.post('/api/update_approval_status', {
         id: item.id,
         status: 'Approved',
-        checker: getUserDisplayName()
+        checker: getUserDisplayName(),
+        login_name: loginName
       })
     }
     
@@ -527,6 +582,11 @@ const approveSelected = async () => {
 // Pre-run Validation functions
 const startPreRunValidation = async (item: any, index: number) => {
   try {
+    const loginName = getLoginName()
+    if (!loginName) {
+      alert('Missing login. Please sign in again.')
+      return
+    }
     // Debug: Check what we're receiving
     console.log('DEBUG - Full item object:', item)
     console.log('DEBUG - item.action:', item.action)
@@ -555,6 +615,7 @@ const startPreRunValidation = async (item: any, index: number) => {
       parameterFolder: isParameter ? folderName : '',
       adjustmentFolder: !isParameter ? folderName : '',
       maker: getUserDisplayName(),  // Use current logged-in user as maker
+      login_name: loginName,
       ui_timestamp: uiTimestamp,
       upload_timestamp: item.timestamp,  // Pass the original upload timestamp
       upload_type: item.type  // Pass the upload type (Parameter/Adjustment)
@@ -574,7 +635,8 @@ const startPreRunValidation = async (item: any, index: number) => {
     await axios.post('/api/update_approval_status', {
       id: item.id,
       status: item.status,
-      checker: getUserDisplayName()
+      checker: getUserDisplayName(),
+      login_name: loginName
     })
     
     // Refresh pre-run validation list
@@ -621,8 +683,14 @@ const pollValidationStatus = async (taskId: string, index: number) => {
 
 const downloadValidationLogs = async (taskId: string) => {
   try {
+    const loginName = getLoginName()
+    if (!loginName) {
+      alert('Missing login. Please sign in again.')
+      return
+    }
     const response = await axios.get(`/api/download_prerun_validation_logs/${taskId}`, {
-      responseType: 'blob'
+      responseType: 'blob',
+      params: { login_name: loginName }
     })
     
     // Create download link
@@ -643,8 +711,14 @@ const downloadValidationLogs = async (taskId: string) => {
 
 const downloadValidationReport = async (taskId: string) => {
   try {
+    const loginName = getLoginName()
+    if (!loginName) {
+      alert('Missing login. Please sign in again.')
+      return
+    }
     const response = await axios.get(`/api/download_prerun_validation_report/${taskId}`, {
-      responseType: 'blob'
+      responseType: 'blob',
+      params: { login_name: loginName }
     })
     
     // Create download link
