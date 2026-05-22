@@ -5,7 +5,7 @@
       <h3 style="font-weight: bold; font-size: 22px; margin-bottom: 24px;">Parameters</h3>
       <ul style="list-style: none; padding-left: 0;">
         <li @click="currentTab = 'parameter'" :style="{ cursor: 'pointer', color: currentTab === 'parameter' ? '#ff612c' : '#333', fontWeight: currentTab === 'parameter' ? '600' : 'normal', marginBottom: '10px', fontSize: '20px' }">▸ Parameter</li>
-        <li v-if="!isFMGUser" @click="currentTab = 'adjustment'" :style="{ cursor: 'pointer', color: currentTab === 'adjustment' ? '#ff612c' : '#333', fontWeight: currentTab === 'adjustment' ? '600' : 'normal', fontSize: '20px' }">▸ Adjustment</li>
+        <li v-if="showAdjustmentTab" @click="currentTab = 'adjustment'" :style="{ cursor: 'pointer', color: currentTab === 'adjustment' ? '#ff612c' : '#333', fontWeight: currentTab === 'adjustment' ? '600' : 'normal', fontSize: '20px' }">▸ Adjustment</li>
       </ul>
     </aside>
 
@@ -83,12 +83,18 @@
       <!-- Review Box -->
       <div style="margin-top: 50px;">
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 0;">Review</h2>
-        <div style="margin-bottom: 10px; padding: 8px; background-color: #e3f2fd; border-radius: 4px; font-size: 14px; color: #1976d2;">
-          <strong>Note:</strong> Status flow is Uploaded -> Validated -> Approved. 
-          Only records in Validated status can be selected for approval. After Approve, the corresponding parameter files are copied to the run ECL param folder (02_param_upload_folder). Users need to approve the target parameter to update the parameters used by run ECL.
+        <div
+          v-if="!isFMGUser"
+          style="margin-bottom: 10px; padding: 8px; background-color: #e8f5e9; border-radius: 4px; font-size: 14px; color: #2e7d32;"
+        >
+          <p style="margin: 0 0 4px 0;"><strong>Note:</strong> Approve uploaded parameters or adjustments.</p>
+          <ul style="margin: 0; padding-left: 18px;">
+            <li><strong>Validation:</strong> Optional pre-run testing is available.</li>
+            <li><strong>Result:</strong> Approved parameters are moved to the ECL run folder.</li>
+          </ul>
         </div>
-        <div v-if="isFMGUser" style="margin-bottom: 10px; padding: 8px; background-color: #e8f5e9; border-radius: 4px; font-size: 14px; color: #2e7d32;">
-          <strong>Note (FMG):</strong> You can only download GL-Posting parameter files in Review. Other records are visible but not downloadable. Pre-run validation is not available.
+        <div v-else style="margin-bottom: 10px; padding: 8px; background-color: #e8f5e9; border-radius: 4px; font-size: 14px; color: #2e7d32;">
+          <strong>Note (FMG):</strong> Review shows GL-Posting parameters only. Pre-run validation is optional. Approved files are copied to the run ECL param folder.
         </div>
         <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
 
@@ -111,11 +117,11 @@
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 50px;">Status</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 100px;">Checker</th>
                 <th style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Download File</th>
-                <th v-if="!isFMGUser" style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Pre-run Validation</th>
+                <th v-if="showPreRunSection" style="padding: 12px; border-bottom: 1px solid #ddd; text-align: center; min-width: 40px;">Pre-run Validation</th>
               </tr>
             </thead>
             <tbody>
-              <template v-for="(item, index) in reviewList" :key="index">
+              <template v-for="item in displayedReviewList" :key="item.id">
                 <tr :style="{ 
                   backgroundColor: item.status === 'Approved' ? '#fff3cd' : '#fff'
                 }">
@@ -123,8 +129,8 @@
                     <input 
                       type="checkbox" 
                       v-model="item.selected" 
-                      :disabled="!item.hasPassedPreRunValidation"
-                      :title="item.hasPassedPreRunValidation ? 'Can be approved' : 'Must pass pre-run validation first'"
+                      :disabled="!canApproveRecord(item)"
+                      :title="canApproveRecord(item) ? 'Select for approval' : 'Already approved'"
                     >
                   </td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.maker }}</td>
@@ -134,27 +140,27 @@
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.action }}</td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
                     <span style="font-weight: bold;">
-                      {{ getRecordDisplayStatus(item) }}
+                      {{ getReviewDisplayStatus(item) }}
                     </span>
                   </td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">{{ item.checker }}</td>
                   <td style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
                     <button
-                      @click="downloadRow(index)"
-                      :disabled="!canDownloadReviewRow(item)"
+                      @click="downloadRow(item)"
+                      :disabled="!canDownloadRecord(item)"
                       :style="{
                         color: item.downloaded ? '#4CAF50' : '#333',
-                        cursor: canDownloadReviewRow(item) ? 'pointer' : 'not-allowed',
+                        cursor: canDownloadRecord(item) ? 'pointer' : 'not-allowed',
                         fontSize: '20px',
                         background: 'none',
                         border: 'none',
-                        opacity: canDownloadReviewRow(item) ? 1 : 0.35
+                        opacity: canDownloadRecord(item) ? 1 : 0.35
                       }"
                     >⬇️</button>
                   </td>
-                  <td v-if="!isFMGUser" style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
+                  <td v-if="showPreRunSection" style="text-align: center; padding: 12px; border-bottom: 1px solid #e0e0e0;">
                     <button
-                      @click="startPreRunValidation(item, index)"
+                      @click="startPreRunValidation(item)"
                       :disabled="item.preRunValidation?.status === 'running'"
                       :style="{
                         color: '#333',
@@ -186,7 +192,7 @@
       </div>
 
       <!-- Pre-run Validation Records Table -->
-      <div v-if="!isFMGUser" style="margin-top: 50px;">
+      <div v-if="showPreRunSection" style="margin-top: 50px;">
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 0;">Pre-run Validation Records</h2>
         <div style="max-height: 640px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; background: white; min-width: 1200px;">
 
@@ -254,6 +260,26 @@ import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import { getUserDisplayName, getUserRole, user } from '../services/authService'
 
+const GL_POSTING_CATEGORY = 'GL-Posting'
+
+interface ReviewRecord {
+  id: number
+  maker: string
+  time: string
+  type: string
+  category: string
+  action: string
+  status: string
+  checker: string
+  timestamp?: string
+  suffix?: string
+  file_path?: string
+  selected?: boolean
+  downloaded?: boolean
+  hasPassedPreRunValidation?: boolean
+  preRunValidation?: { status: string; taskId?: string; timestamp?: string } | null
+}
+
 const currentTab = ref<'parameter' | 'adjustment'>('parameter')
 const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -267,52 +293,71 @@ const versionSuffix = ref('')
 // Current timestamp
 const currentTimestamp = ref('')
 
-// Unified review list from database
-const reviewList = ref<any[]>([])
-// Pre-run validation records list
+const reviewList = ref<ReviewRecord[]>([])
 const prerunValidationList = ref<any[]>([])
+
 const isFMGUser = computed(() => getUserRole().trim().toUpperCase() === 'FMG')
 
-const canFMGDownloadRecord = (item: any) =>
-  item.type === 'parameter' && item.category === 'GL-Posting'
+const isGlPostingParameter = (item: Pick<ReviewRecord, 'type' | 'category'>) =>
+  item.type === 'parameter' && item.category === GL_POSTING_CATEGORY
 
-const canDownloadReviewRow = (item: any) =>
-  !isFMGUser.value || canFMGDownloadRecord(item)
+const isPendingApproval = (item: ReviewRecord) => item.status !== 'Approved'
 
-const getLoginName = (): string => user.value?.loginName || ''
+const getReviewDisplayStatus = (item: ReviewRecord) => {
+  if (item.status === 'Approved') return 'Approved'
+  if (item.hasPassedPreRunValidation) return 'Validated'
+  return 'Uploaded'
+}
 
-const messageClass = computed(() => message.value.includes('✅') ? 'success' : message.value.includes('❌') ? 'error' : 'info')
+const showAdjustmentTab = computed(() => !isFMGUser.value)
+const showPreRunSection = computed(() => !isFMGUser.value)
+
+const canApproveRecord = (item: ReviewRecord) => {
+  if (!isPendingApproval(item)) return false
+  return !isFMGUser.value || isGlPostingParameter(item)
+}
+
+const canDownloadRecord = (item: ReviewRecord) =>
+  !isFMGUser.value || isGlPostingParameter(item)
+
+const displayedReviewList = computed(() =>
+  isFMGUser.value
+    ? reviewList.value.filter(isGlPostingParameter)
+    : reviewList.value
+)
+
+const hasEligibleRecords = computed(() =>
+  displayedReviewList.value.some(canApproveRecord)
+)
+
+const hasSelectedEligibleRecords = computed(() =>
+  displayedReviewList.value.some(item => item.selected && canApproveRecord(item))
+)
 
 const allSelected = computed({
   get: () => {
-    const eligibleItems = reviewList.value.filter(item => item.hasPassedPreRunValidation)
-    return eligibleItems.length > 0 && eligibleItems.every(item => item.selected)
+    const eligible = displayedReviewList.value.filter(canApproveRecord)
+    return eligible.length > 0 && eligible.every(item => item.selected)
   },
   set: (val: boolean) => {
-    // Only select items that have passed pre-run validation
-    reviewList.value.forEach(item => {
-      if (item.hasPassedPreRunValidation) {
-        item.selected = val
-      }
+    displayedReviewList.value.forEach(item => {
+      if (canApproveRecord(item)) item.selected = val
     })
   }
 })
 
-// Check if there are any records eligible for approval
-const hasEligibleRecords = computed(() => {
-  return reviewList.value.some(item => item.hasPassedPreRunValidation)
-})
+const getLoginName = (): string => user.value?.loginName || ''
 
-// Check if there are any selected records that are eligible for approval
-const hasSelectedEligibleRecords = computed(() => {
-  return reviewList.value.some(item => item.selected && item.hasPassedPreRunValidation)
-})
+const messageClass = computed(() =>
+  message.value.includes('✅') ? 'success' : message.value.includes('❌') ? 'error' : 'info'
+)
 
 const selectedCategory = ref('')
-const parameterCategories = computed(() => {
-  if (isFMGUser.value) return ['GL-Posting']
-  return ['Regular', 'Non-regular', 'GL-Posting']
-})
+const parameterCategories = computed(() =>
+  isFMGUser.value
+    ? [GL_POSTING_CATEGORY]
+    : ['Regular', 'Non-regular', GL_POSTING_CATEGORY]
+)
 
 // Auto-generated filename based on tab and category
 const autoGeneratedFilename = computed(() => {
@@ -321,7 +366,7 @@ const autoGeneratedFilename = computed(() => {
       return 'CNCBI ECL engine param table_regular updated.xlsx'
     } else if (selectedCategory.value === 'Non-regular') {
       return 'CNCBI ECL engine param table_not regularly updated.xlsx'
-    } else if (selectedCategory.value === 'GL-Posting') {
+    } else if (selectedCategory.value === GL_POSTING_CATEGORY) {
       return 'CNCBI ECL engine param table_gl posting.xlsx'
     }
   } else if (currentTab.value === 'adjustment') {
@@ -346,7 +391,7 @@ watch(currentTab, () => {
   if (fileInput.value) fileInput.value.value = ''
   // Clear versionSuffix and selectedCategory when switching tabs
   versionSuffix.value = ''
-  selectedCategory.value = isFMGUser.value ? 'GL-Posting' : ''
+  selectedCategory.value = isFMGUser.value ? GL_POSTING_CATEGORY : ''
   // Refresh timestamp
   currentTimestamp.value = generateTimestamp()
 })
@@ -365,14 +410,14 @@ const loadReviewRecords = async () => {
     })
     reviewList.value = response.data.records.map((record: any) => ({
       ...record,
-      approved: record.status === 'Approved',
       downloaded: false,
       selected: false,
-      preRunValidation: null // Initialize preRunValidation field
+      preRunValidation: null
     }))
-    
-    // Load pre-run validation records for each parameter/adjustment
-    await loadPreRunValidationRecords()
+
+    if (!isFMGUser.value) {
+      await loadPreRunValidationRecords()
+    }
   } catch (error) {
     console.error('Error loading review records:', error)
   }
@@ -424,18 +469,10 @@ const updateReviewListWithValidationStatus = () => {
   })
 }
 
-// Display status for review table
-const getRecordDisplayStatus = (record: any) => {
-  if (record.status === 'Approved') return 'Approved'
-  if (record.hasPassedPreRunValidation) return 'Validated'
-  return 'Uploaded'
-}
-
-// Load data when component mounts
 onMounted(() => {
   if (isFMGUser.value) {
     currentTab.value = 'parameter'
-    selectedCategory.value = 'GL-Posting'
+    selectedCategory.value = GL_POSTING_CATEGORY
   }
   loadReviewRecords()
   // Initialize timestamp
@@ -475,8 +512,11 @@ const formatFileSize = (bytes: number): string => {
 
 const uploadFile = async () => {
   if (!selectedFile.value) return
-  if (isFMGUser.value && (currentTab.value !== 'parameter' || selectedCategory.value !== 'GL-Posting')) {
-    message.value = '❌ FMG users can only upload GL-Posting parameter files.'
+  if (
+    isFMGUser.value &&
+    (currentTab.value !== 'parameter' || selectedCategory.value !== GL_POSTING_CATEGORY)
+  ) {
+    message.value = 'FMG users can only upload GL-Posting parameter files.'
     uploadSuccess.value = false
     uploadTried.value = true
     return
@@ -510,10 +550,9 @@ const uploadFile = async () => {
   }
 }
 
-const downloadRow = async (index: number) => {
-  const item = reviewList.value[index]
-  if (!canDownloadReviewRow(item)) {
-    alert('FMG users can only download GL-Posting parameter files.')
+const downloadRow = async (item: ReviewRecord) => {
+  if (!canDownloadRecord(item)) {
+    alert('Download is not allowed for this record.')
     return
   }
   const loginName = getLoginName()
@@ -547,11 +586,12 @@ const downloadRow = async (index: number) => {
 
 const approveSelected = async () => {
   try {
-    // Only process items that are selected AND have passed pre-run validation
-    const selectedItems = reviewList.value.filter(item => item.selected && item.hasPassedPreRunValidation)
-    
+    const selectedItems = displayedReviewList.value.filter(
+      item => item.selected && canApproveRecord(item)
+    )
+
     if (selectedItems.length === 0) {
-      alert('No eligible records selected for approval. Records must pass pre-run validation first.')
+      alert('No eligible records selected for approval.')
       return
     }
     
@@ -579,59 +619,35 @@ const approveSelected = async () => {
   }
 }
 
-// Pre-run Validation functions
-const startPreRunValidation = async (item: any, index: number) => {
+const startPreRunValidation = async (item: ReviewRecord) => {
   try {
     const loginName = getLoginName()
     if (!loginName) {
       alert('Missing login. Please sign in again.')
       return
     }
-    // Debug: Check what we're receiving
-    console.log('DEBUG - Full item object:', item)
-    console.log('DEBUG - item.action:', item.action)
-    console.log('DEBUG - item.type:', item.type)
-    console.log('DEBUG - item.timestamp:', item.timestamp)
-    
-    // Extract folder name from action field (format: "upload: folder_name")
+
     const folderName = item.action.replace('upload: ', '').trim()
-    
-    console.log('DEBUG - folderName after replace:', folderName)
-    console.log('DEBUG - folderName starts with par_?', folderName.startsWith('par_'))
-    console.log('DEBUG - folderName starts with adj_?', folderName.startsWith('adj_'))
-    
-    // Determine if this is a parameter or adjustment based on folder name prefix
     const isParameter = folderName.startsWith('par_')
-    
-    console.log('DEBUG - isParameter result:', isParameter)
-    
-    // Generate UI timestamp
-    const now = new Date()
-    const pad = (n: number) => n.toString().padStart(2, '0')
-    const uiTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
-    
-    // Start validation
+
     const response = await axios.post('/api/start_prerun_validation', {
       parameterFolder: isParameter ? folderName : '',
       adjustmentFolder: !isParameter ? folderName : '',
-      maker: getUserDisplayName(),  // Use current logged-in user as maker
+      maker: getUserDisplayName(),
       login_name: loginName,
-      ui_timestamp: uiTimestamp,
-      upload_timestamp: item.timestamp,  // Pass the original upload timestamp
-      upload_type: item.type  // Pass the upload type (Parameter/Adjustment)
+      ui_timestamp: generateTimestamp(),
+      upload_timestamp: item.timestamp,
+      upload_type: item.type
     })
-    
-    // Update the item with validation info
+
     item.preRunValidation = {
       taskId: response.data.task_id,
       status: 'running',
       timestamp: response.data.timestamp
-    }
-    
-    // Update the checker in the upload table to current user
+    } as NonNullable<ReviewRecord['preRunValidation']>
+
     item.checker = getUserDisplayName()
-    
-    // Update the database record to reflect the checker change
+
     await axios.post('/api/update_approval_status', {
       id: item.id,
       status: item.status,
@@ -639,11 +655,9 @@ const startPreRunValidation = async (item: any, index: number) => {
       login_name: loginName
     })
     
-    // Refresh pre-run validation list
     await loadPreRunValidationRecords()
     
-    // Start polling for status updates
-    pollValidationStatus(response.data.task_id, index)
+    pollValidationStatus(response.data.task_id, item.id)
     
   } catch (error: any) {
     console.error('Failed to start pre-run validation:', error)
@@ -651,32 +665,31 @@ const startPreRunValidation = async (item: any, index: number) => {
   }
 }
 
-const pollValidationStatus = async (taskId: string, index: number) => {
+const findReviewRecordById = (recordId: number) =>
+  reviewList.value.find(record => record.id === recordId)
+
+const pollValidationStatus = async (taskId: string, recordId: number) => {
   try {
     const response = await axios.get(`/api/prerun_validation_status/${taskId}`)
     const status = response.data.status
-    
-    // Update the item status
-    if (reviewList.value[index] && reviewList.value[index].preRunValidation) {
-      reviewList.value[index].preRunValidation.status = status
+    const record = findReviewRecordById(recordId)
+
+    if (record?.preRunValidation) {
+      record.preRunValidation.status = status
     }
-    
-    // Refresh pre-run validation list
+
     await loadPreRunValidationRecords()
-    
-    // Continue polling if still running
+
     if (status === 'running') {
-      setTimeout(() => pollValidationStatus(taskId, index), 5000) // Poll every 5 seconds
+      setTimeout(() => pollValidationStatus(taskId, recordId), 5000)
     } else {
-      // If validation is completed or failed, update the validation status for all records
       updateReviewListWithValidationStatus()
     }
-    
   } catch (error) {
     console.error('Error polling validation status:', error)
-    // Update status to failed if polling fails
-    if (reviewList.value[index] && reviewList.value[index].preRunValidation) {
-      reviewList.value[index].preRunValidation.status = 'failed'
+    const record = findReviewRecordById(recordId)
+    if (record?.preRunValidation) {
+      record.preRunValidation.status = 'failed'
     }
   }
 }

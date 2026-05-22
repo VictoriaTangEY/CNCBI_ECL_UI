@@ -5,10 +5,10 @@ After=network.target
 User=svreclcalusr
 Group=svreclcalusr
 WorkingDirectory=/var/www/mywebsite/flaskapp
-Environment="PATH=/u01/Apps/EY_working/venv_eclengine/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/u01/Apps/ECL_PRD/venv_eclengine/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="DB_PASSWORD=Abcdef123456"
 Environment="LDAP_BIND_PASSWORD=Abcdef@@123456"
-ExecStart=/u01/Apps/EY_working/venv_eclengine/bin/gunicorn \
+ExecStart=/u01/Apps/ECL_PRD/venv_eclengine/bin/gunicorn \
           --workers 3 \
           --bind 127.0.0.1:5010 \
           --timeout 10000 \

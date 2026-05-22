@@ -288,7 +288,7 @@ interface ReviewItem {
 }
  
 // Replace hardcoded options with dynamic lists
-const runModes = ['0','1','2','3','0-5','1-5','2-5','3-5','4-5']
+const runModes = ['0-5', '1-5']
  
 const reportingDateOptions = ref<string[]>([])
  

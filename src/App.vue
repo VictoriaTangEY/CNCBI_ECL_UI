@@ -14,8 +14,7 @@
       <div class="navbar">
         <!-- Logo -->
         <div class="logo">
-          <img alt="Group" src="/group.png" />
-          <img alt="Vector" src="/vector.svg" />
+          <img alt="CNCBI" class="logo-image" src="/logo.png" />
         </div>
         
         <!-- Navigation Links (only show permitted functions) -->
@@ -104,15 +103,10 @@ onMounted(async () => {
   margin-left: 27px;
 }
 
-.logo img:first-child {
-  width: 42px;
+.logo-image {
   height: 41px;
-  margin-right: 7px;
-}
-
-.logo img:last-child {
-  width: 198px;
-  height: 41px;
+  width: auto;
+  object-fit: contain;
 }
 
 .nav-links {

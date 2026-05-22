@@ -4,15 +4,14 @@
     <div class="navbar">
       <!-- Logo -->
       <div class="logo">
-        <img alt="Group" src="/group.png" />
-        <img alt="Vector" src="/vector.svg" />
+        <img alt="CNCBI" class="logo-image" src="/logo.png" />
       </div>
     </div>
 
     <!-- Login Content -->
     <div class="login-content">
       <div class="login-card">
-        <h1 class="login-title">Login</h1>
+        <h1 class="login-title">Expected Credit Loss System Login</h1>
         
         <form @submit.prevent="handleLogin" class="login-form">
           <!-- Username Field -->
@@ -228,15 +227,11 @@ onMounted(() => {
   margin-left: 27px;
 }
 
-.logo img:first-child {
-  width: 57px;
-  height: 57px;
-  margin-right: 17px;
-}
-
-.logo img:last-child {
-  width: 206px;
+.logo-image {
   height: 48px;
+  width: auto;
+  max-width: 280px;
+  object-fit: contain;
 }
 
 /* Login content area */
@@ -438,15 +433,9 @@ onMounted(() => {
     margin-left: 15px;
   }
   
-  .logo img:first-child {
-    width: 45px;
-    height: 45px;
-    margin-right: 12px;
-  }
-  
-  .logo img:last-child {
-    width: 150px;
+  .logo-image {
     height: 35px;
+    max-width: 200px;
   }
   
   .login-content {

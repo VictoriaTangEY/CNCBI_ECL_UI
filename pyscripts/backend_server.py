@@ -143,9 +143,9 @@ DB_NAME = DB_CONFIG['database']
 # 7. LDAP CONNECTION
 LDAP_CONFIG = {
     'server': 'ldap://10.30.244.12:389',
-    'bind_dn': 'CN=svreclappusr, OU=Service Accounts,OU=Tier1,OU=Admin,OU=HKG,DC=hkg,DC=ho,DC=cncb2',
+    'bind_dn': 'CN=svreclappusr, OU=Service Accounts,OU=Tier1,OU=Admin,OU=HKG,DC=hkg,DC=ho,DC=cncbi',
     'bind_password': os.getenv('LDAP_BIND_PASSWORD', ''),
-    'search_base': 'OU=User Accounts,OU=HKG,DC=hkg,DC=ho,DC=cncb2',
+    'search_base': 'OU=User Accounts,OU=HKG,DC=hkg,DC=ho,DC=cncbi',
     'connection_timeout': 10,
 }
 
@@ -1088,7 +1088,7 @@ def create_ui_role_function_table(role_name):
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 
-def save_user_record(user_name, login_name, default_role, updated_by, time, email=None, mobile_no=None, phone_no=None, remark=None):
+def save_user_record(user_name, login_name, default_role, updated_by, email=None, mobile_no=None, phone_no=None, remark=None):
     """Save user record to database"""
     try:
         create_ui_user_maintenance_table()
@@ -1097,8 +1097,8 @@ def save_user_record(user_name, login_name, default_role, updated_by, time, emai
         cursor.execute(f"""
             INSERT INTO [{DB_NAME}].[dbo].[UI_user_maintenance]
             (user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user_name, login_name, default_role, updated_by, time, email, mobile_no, phone_no, remark))
+            VALUES (?, ?, ?, ?, GETDATE(), ?, ?, ?, ?)
+        """, (user_name, login_name, default_role, updated_by, email, mobile_no, phone_no, remark))
         conn.close()
         logger.info(f"Successfully saved user record: {user_name}")
         
@@ -1204,6 +1204,38 @@ def update_user_record(user_id, user_name, default_role, email, mobile_no, phone
         return True
     except Exception as e:
         logger.error(f"Error updating user record: {str(e)}")
+        return False
+
+def delete_user_record(user_id, updated_by):
+    """Delete user record from database"""
+    try:
+        conn = pyodbc.connect(f'DSN={DB_DSN};UID={DB_USERNAME};PWD={DB_PASSWORD}', autocommit=True)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT user_name, login_name, default_role
+            FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            WHERE id = ?
+        """, (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            logger.warning(f"User record not found for deletion: id={user_id}")
+            return False
+
+        user_name, login_name, default_role = row[0], row[1], row[2]
+        cursor.execute(f"""
+            DELETE FROM [{DB_NAME}].[dbo].[UI_user_maintenance]
+            WHERE id = ?
+        """, (user_id,))
+        conn.close()
+        logger.info(f"Successfully deleted user record: {user_name} ({login_name})")
+
+        details = f"Deleted user: {user_name} ({login_name}) with role: {default_role}"
+        log_user_role_update("Delete User", updated_by, "Role Management", details)
+
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting user record: {str(e)}")
         return False
 
 def save_role_record(role_name, status, updated_by, time):
@@ -3539,7 +3571,6 @@ def api_save_user_record():
             login_name=data['login_name'],
             default_role=data['default_role'],
             updated_by=data['updated_by'],
-            time=data['time'],
             email=data.get('email'),
             mobile_no=data.get('mobile_no'),
             phone_no=data.get('phone_no'),
@@ -3574,6 +3605,23 @@ def api_update_user_record():
             return jsonify({'status': 'error', 'message': 'Failed to update user record'}), 500
     except Exception as e:
         logger.error(f"Error in api_update_user_record: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/delete_user_record', methods=['POST'])
+def api_delete_user_record():
+    """Delete user record from database"""
+    try:
+        data = request.get_json()
+        success = delete_user_record(
+            user_id=data['user_id'],
+            updated_by=data['updated_by']
+        )
+        if success:
+            return jsonify({'status': 'success', 'message': 'User record deleted successfully'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to delete user record'}), 500
+    except Exception as e:
+        logger.error(f"Error in api_delete_user_record: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/get_role_records', methods=['GET'])

@@ -11,7 +11,7 @@ from typing import Callable, Dict, Optional
 import pyodbc
 
 DEFAULT_BASE_ROOT = r'/u01/Apps/EY_working'
-DEFAULT_ENGINE_DIR = 'ECL_Engine_v0.4'
+DEFAULT_ENGINE_DIR = 'ECL_Engine_v0.5'
 
 
 class BatchFolderMaintain:
